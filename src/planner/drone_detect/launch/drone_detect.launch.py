@@ -10,7 +10,7 @@ def generate_launch_description():
     my_id = LaunchConfiguration('my_id', default = 1)
     odom_topic = LaunchConfiguration('odom_topic', default = "/vins_estimator/imu_propagate")
     
-    # 声明参数
+    # Declare parameters
     my_id_cmd = DeclareLaunchArgument(
         'my_id',
         default_value = my_id,
@@ -23,7 +23,7 @@ def generate_launch_description():
         description = 'Topic for odometry data'
     )
     
-    # 读取config文件
+    # Read config files
     camera_file = os.path.join(
         get_package_share_directory('drone_detect'),
         'config',
@@ -35,7 +35,7 @@ def generate_launch_description():
         'default.yaml'
     )
 
-    # 定义节点
+    # Define node
     drone_detect_node = Node(
         package='drone_detect',
         executable='drone_detect',
@@ -57,14 +57,14 @@ def generate_launch_description():
         ]
     )
 
-    # 定义 LaunchDescription
+    # Define LaunchDescription
     ld = LaunchDescription()
 
-    # 添加参数声明
+    # Add parameter declarations
     ld.add_action(my_id_cmd)
     ld.add_action(odom_topic_cmd)
 
-    # 添加节点
+    # Add node
     ld.add_action(drone_detect_node)
 
     return ld

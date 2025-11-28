@@ -19,7 +19,7 @@ using bfmt = boost::format;
 class WaypointGenerator : public rclcpp::Node
 {
 public:
-    // 构造函数,有一个参数为节点名称
+    // Constructor, with one parameter for the node name
     WaypointGenerator(std::string name) : Node(name)
     {
         trigged_time = rclcpp::Time(0);
@@ -34,22 +34,22 @@ public:
         auto sub3 = this->create_subscription<geometry_msgs::msg::PoseStamped>(
             "traj_start_trigger", 10, std::bind(&WaypointGenerator::traj_start_trigger_callback, this, std::placeholders::_1));
 
+        // Declare publishers
         pub1 = this->create_publisher<nav_msgs::msg::Path>("waypoints", 50);
         pub2 = this->create_publisher<geometry_msgs::msg::PoseArray>("waypoints_vis", 10);
     }
 
 private:
-    // 变量
+    // Variables
     string waypoint_type = string("manual");
     bool is_odom_ready;
     nav_msgs::msg::Odometry odom;
     nav_msgs::msg::Path waypoints;
 
-    // series waypoint needed
+    // Series waypoint needed
     std::deque<nav_msgs::msg::Path> waypointSegments;
     rclcpp::Time trigged_time;
 
-    // 声明发布者
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub1;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub2;
 
@@ -61,7 +61,7 @@ private:
 
         RCLCPP_INFO(this->get_logger(), "Getting segment %d", segid);
 
-        // 参数获取并断言
+        // Get parameters and assert validity
         rcpputils::assert_true(this->get_parameter(seg_str + "yaw", yaw));
         rcpputils::assert_true(
             (yaw > -3.1499999) && (yaw < 3.14999999),
@@ -80,29 +80,29 @@ private:
         nav_msgs::msg::Path path_msg;
         path_msg.header.stamp = time_base + rclcpp::Duration::from_seconds(time_of_start);
 
-        // 计算初始偏航角
-        // 使用tf2提取yaw
-        // 从消息转换为tf2四元数
+        // Compute the initial yaw angle
+        // Use tf2 to extract the yaw
+        // Convert from message to a tf2 quaternion
         tf2::Quaternion quat;
         tf2::fromMsg(odom.pose.pose.orientation, quat);
 
-        // mmz @todo: 不确定这样转换是否正确
-        // 计算yaw角度，使用tf2::Quaternion的getAngle方法获取四元数的角度
+        // mmz @todo: Not sure whether this conversion is correct
+        // Compute yaw angle using tf2::Matrix3x3 to extract roll, pitch, yaw
         double roll_, pitch_, yaw_;
-        tf2::Matrix3x3(quat).getRPY(roll_, pitch_, yaw_); // 转换为roll, pitch, yaw角度
+        tf2::Matrix3x3(quat).getRPY(roll_, pitch_, yaw_);
         double baseyaw = yaw_;
 
-        // 生成路径点
+        // Generate path points
         for (size_t k = 0; k < ptx.size(); ++k)
         {
             geometry_msgs::msg::PoseStamped pt;
 
-            // 设置四元数
+            // Set quaternion
             tf2::Quaternion quat;
             quat.setRPY(0.0, 0.0, baseyaw + yaw);
             pt.pose.orientation = tf2::toMsg(quat);
 
-            // 坐标转换
+            // Coordinate transformation
             Eigen::Vector2d dp(ptx.at(k), pty.at(k));
             Eigen::Vector2d rdp;
             rdp.x() = std::cos(-baseyaw - yaw) * dp.x() + std::sin(-baseyaw - yaw) * dp.y();
@@ -136,14 +136,13 @@ private:
 
     void publish_waypoints()
     {
-        waypoints.header.frame_id = std::string("world");
+        waypoints.header.frame_id = std::string("ego_world");
         waypoints.header.stamp = rclcpp::Clock().now();
         pub1->publish(waypoints);
         geometry_msgs::msg::PoseStamped init_pose;
         init_pose.header = odom.header;
         init_pose.pose = odom.pose.pose;
         waypoints.poses.insert(waypoints.poses.begin(), init_pose);
-        // pub2.publish(waypoints);
         waypoints.poses.clear();
     }
 
@@ -151,7 +150,7 @@ private:
     {
         nav_msgs::msg::Path wp_vis = waypoints;
         geometry_msgs::msg::PoseArray poseArray;
-        poseArray.header.frame_id = std::string("world");
+        poseArray.header.frame_id = std::string("ego_world");
         poseArray.header.stamp = rclcpp::Clock().now();
 
         {
@@ -169,7 +168,7 @@ private:
         pub2->publish(poseArray);
     }
 
-    // 回调函数
+    // Callback function
     void odom_callback(const nav_msgs::msg::Odometry::ConstPtr &msg)
     {
         is_odom_ready = true;
@@ -205,16 +204,7 @@ private:
 
     void goal_callback(const geometry_msgs::msg::PoseStamped::ConstPtr &msg)
     {
-        /*    if (!is_odom_ready) {
-                ROS_ERROR("[waypoint_generator] No odom!");
-                return;
-            }*/
-
-        trigged_time = rclcpp::Clock().now(); // odom.header.stamp;
-        // ROS_ASSERT(trigged_time > ros::Time(0));
-
-        // ros::NodeHandle n("~");
-        // n.param("waypoint_type", waypoint_type, string("manual"));
+        trigged_time = rclcpp::Clock().now();
         this->get_parameter("waypoint_type", waypoint_type);
 
         if (waypoint_type == string("circle"))
@@ -263,17 +253,16 @@ private:
                 geometry_msgs::msg::PoseStamped pt = *msg;
                 if (waypoint_type == string("noyaw"))
                 {
-                    // double yaw = tf::getYaw(odom.pose.pose.orientation);
-                    // 从消息转换为tf2四元数
+                    // Convert from message to quaternion
                     tf2::Quaternion quat;
                     tf2::fromMsg(odom.pose.pose.orientation, quat);
 
-                    // mmz @todo: 不确定这样转换是否正确
-                    // 计算yaw角度，使用tf2::Quaternion的getAngle方法获取四元数的角度
+                    // mmz @todo: Not sure if this conversion is correct
+                    // Calculate the yaw angle, use the getAngle method of tf2::Quaternion to get the quaternion angle
+                   
                     double roll_, pitch_, yaw_;
-                    tf2::Matrix3x3(quat).getRPY(roll_, pitch_, yaw_); // 转换为roll, pitch, yaw角度
+                    tf2::Matrix3x3(quat).getRPY(roll_, pitch_, yaw_); // Convert to roll, pitch, yaw angles
                     double yaw = yaw;
-                    // pt.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
                     tf2::Quaternion quaternion;
                     quaternion.setRPY(0.0, 0.0, yaw); // Roll, Pitch, Yaw
                     pt.pose.orientation = tf2::toMsg(quaternion);

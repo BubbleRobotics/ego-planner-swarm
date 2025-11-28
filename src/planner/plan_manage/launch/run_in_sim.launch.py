@@ -10,7 +10,7 @@ def generate_launch_description():
     # LaunchConfiguration definitions
     map_size_x = LaunchConfiguration('map_size_x', default=42.0)
     map_size_y = LaunchConfiguration('map_size_y', default=30.0)
-    map_size_z = LaunchConfiguration('map_size_z', default=5.0)
+    map_size_z = LaunchConfiguration('map_size_z', default=10.0)
     init_x = LaunchConfiguration('init_x', default=0.0)
     init_y = LaunchConfiguration('init_y', default=0.0)
     init_z = LaunchConfiguration('init_z', default=0.0)
@@ -18,7 +18,7 @@ def generate_launch_description():
     target_y = LaunchConfiguration('target_y', default=20.0)
     target_z = LaunchConfiguration('target_z', default=1.0)
     drone_id = LaunchConfiguration('drone_id', default=0)
-    odom_topic = LaunchConfiguration('odom_topic', default='visual_slam/odom')
+    odom_topic = LaunchConfiguration('odom_topic', default='odometry')
     obj_num = LaunchConfiguration('obj_num', default=10)
 
     # DeclareLaunchArgument definitions
@@ -56,8 +56,8 @@ def generate_launch_description():
             'cy': str(243.44969177246094),
             'fx': str(387.229248046875),
             'fy': str(387.229248046875),
-            'max_vel': str(2.0),
-            'max_acc': str(3.0),
+            'max_vel': str(0.5),
+            'max_acc': str(0.3),
             'planning_horizon': str(7.5),
             'use_distinctive_trajs': 'True',
             'flight_type': str(2),
@@ -66,8 +66,8 @@ def generate_launch_description():
             'point0_y': target_y,
             'point0_z': target_z,
             
-            'point1_x': str(0.0),
-            'point1_y': str(15.0),
+            'point1_x': str(10.0),
+            'point1_y': str(5.0),
             'point1_z': str(1.0),
             
             'point2_x': str(15.0),

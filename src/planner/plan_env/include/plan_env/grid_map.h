@@ -3,7 +3,7 @@
 
 #include <Eigen/Eigen>
 #include <Eigen/StdVector>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <iostream>
 #include <random>
@@ -379,12 +379,14 @@ inline bool GridMap::isInMap(const Eigen::Vector3d &pos)
   if (pos(0) < mp_.map_min_boundary_(0) + 1e-4 || pos(1) < mp_.map_min_boundary_(1) + 1e-4 ||
       pos(2) < mp_.map_min_boundary_(2) + 1e-4)
   {
-    // cout << "less than min range!" << endl;
+    std::cout << "\nWatch out:" << pos << "less than min range!" << mp_.map_min_boundary_ << endl;
+    
     return false;
   }
   if (pos(0) > mp_.map_max_boundary_(0) - 1e-4 || pos(1) > mp_.map_max_boundary_(1) - 1e-4 ||
       pos(2) > mp_.map_max_boundary_(2) - 1e-4)
   {
+    std::cout << pos(0) << ", " << pos(1) << ", " << pos(2) << " greater than max range!" << mp_.map_max_boundary_ << endl;
     return false;
   }
   return true;
@@ -394,11 +396,13 @@ inline bool GridMap::isInMap(const Eigen::Vector3i &idx)
 {
   if (idx(0) < 0 || idx(1) < 0 || idx(2) < 0)
   {
+    std::cout << "less than min index!" << std::endl;
     return false;
   }
   if (idx(0) > mp_.map_voxel_num_(0) - 1 || idx(1) > mp_.map_voxel_num_(1) - 1 ||
       idx(2) > mp_.map_voxel_num_(2) - 1)
   {
+    std::cout << idx <<"greater than max index!" << mp_.map_voxel_num_ << std::endl;
     return false;
   }
   return true;

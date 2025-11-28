@@ -37,10 +37,10 @@ include_directories(
 add_library(quadrotor_dynamics src/dynamics/Quadrotor.cpp)
 ament_target_dependencies(quadrotor_dynamics rclcpp)
 
-# 添加可执行文件
+# Add executable file
 add_executable(so3_quadrotor_simulator src/quadrotor_simulator_so3.cpp)
 
-# 链接依赖库
+# Linking dependency libraries
 ament_target_dependencies(so3_quadrotor_simulator
   rclcpp
   nav_msgs
@@ -56,12 +56,12 @@ install(TARGETS so3_quadrotor_simulator
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# 安装 launch 文件
+# Install launch file
 install(
   DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
-# 安装config（存放rviz的config文件）
+# Install config (the config file containing rviz)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
 ament_package()

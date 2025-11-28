@@ -52,7 +52,7 @@ optimizeMap(mocka::Maps::BasicInfo& in)
   in.cloud->width -= temp->size();
 
   pcl::toROSMsg(*in.cloud, *in.output);
-  in.output->header.frame_id = "world";
+  in.output->header.frame_id = "ego_world";
   RCLCPP_INFO(rclcpp::get_logger("optimizeMap"), "finish: number of points after optimization %d", in.cloud->width);
   delete temp;
   return;
@@ -64,7 +64,7 @@ main(int argc, char** argv)
   rclcpp::init(argc, argv);
   rclcpp::Node::SharedPtr node = std::make_shared<rclcpp::Node>("mockamap");
 
-  // 创建一个 ROS2 发布者
+  // Create a ROS2 publisher
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pcl_pub =
     node->create_publisher<sensor_msgs::msg::PointCloud2>("mock_map", 1);
 
@@ -72,7 +72,7 @@ main(int argc, char** argv)
   sensor_msgs::msg::PointCloud2       output;
   // Fill in the cloud data
 
-  // 获取参数
+  // Get parameters
   int seed;
 
   int sizeX;
@@ -100,15 +100,15 @@ main(int argc, char** argv)
   node->get_parameter("z_length", sizeZ);
   node->get_parameter("type", type);
 
-  // 调整尺寸和分辨率
+  // Adjust size and resolution
   scale = 1 / scale;
   sizeX = sizeX * scale;
   sizeY = sizeY * scale;
   sizeZ = sizeZ * scale;
 
-  // 配置地图生成信息
+  // Configure map generation information
   mocka::Maps::BasicInfo info;
-  info.node       = node;  // ROS2中没有 NodeHandle 私有部分，已移除
+  info.node       = node;  // The NodeHandle private part is no longer present in ROS2 and has been removed.
   info.sizeX      = sizeX;
   info.sizeY      = sizeY;
   info.sizeZ      = sizeZ;
@@ -117,17 +117,17 @@ main(int argc, char** argv)
   info.output     = &output;
   info.cloud      = &cloud;
 
-  // 生成地图
+  // Generate map
   mocka::Maps map;
   map.setInfo(info);
   map.generate(type);
 
-  // 订阅循环
+  // Subscription loop
   rclcpp::Rate loop_rate(update_freq);
   while (rclcpp::ok())
   {
     pcl_pub->publish(output);
-    rclcpp::spin_some(node);  // 这里使用 spin_some 代替 ros::spinOnce()
+    rclcpp::spin_some(node);  // Here we use spin_some instead of ros::spinOnce()
     loop_rate.sleep();
   }
 

@@ -162,7 +162,7 @@ namespace fast_planner
 
     void markerCallback(const visualization_msgs::msg::Marker::ConstPtr &msg);
 
-    void predictCallback(); // ROS2 的定时器回调不需要 TimerEvent
+    void predictCallback(); // ROS2 timer callbacks do not require TimerEvent
     void predictPolyFit();
     void predictConstVel();
 

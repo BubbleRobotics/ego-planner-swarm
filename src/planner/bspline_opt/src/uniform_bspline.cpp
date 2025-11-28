@@ -207,7 +207,7 @@ namespace ego_planner
 
   // void UniformBspline::recomputeInit() {}
 
-  // 将一组点转换为控制点
+  // Convert a set of points to control points
   void UniformBspline::parameterizeToBspline(const double &ts, const vector<Eigen::Vector3d> &point_set,
                                              const vector<Eigen::Vector3d> &start_end_derivative,
                                              Eigen::MatrixXd &ctrl_pts)

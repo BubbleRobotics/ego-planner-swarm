@@ -33,7 +33,7 @@ namespace ego_planner
     PlanningVisualization(const rclcpp::Node::SharedPtr &node)
       : node_(node)
     {
-      // 初始化发布者，调整消息类型和队列大小
+      // Initialize the publisher, adjust message type and queue size.
       goal_point_pub = node_->create_publisher<visualization_msgs::msg::Marker>("goal_point", 2);
       global_list_pub = node_->create_publisher<visualization_msgs::msg::Marker>("global_list", 2);
       init_list_pub = node_->create_publisher<visualization_msgs::msg::Marker>("init_list", 2);

@@ -17,7 +17,7 @@
 using namespace std;
 using namespace Eigen;
 
-// ROS2 初始化节点
+// ROS2 Initialize Node
 rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cloud;
 
 sensor_msgs::msg::PointCloud2 local_map_pcl;
@@ -66,7 +66,7 @@ inline Eigen::Vector3i coord2gridIndex(const Eigen::Vector3d& pt) {
   return idx;
 };
 
-// 里程计信息回调
+// Odometer information callback
 void rcvOdometryCallbck(const nav_msgs::msg::Odometry& odom) {
   /*if(!has_global_map)
     return;*/
@@ -87,14 +87,14 @@ void rcvGlobalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr 
 
   RCLCPP_WARN(rclcpp::get_logger("rcvGlobalPointCloudCallBack"), "Global Pointcloud received..");
 
-  // 转换消息信息格式
+  // Convert message format
   pcl::PointCloud<pcl::PointXYZ> cloud_input;
   pcl::fromROSMsg(*pointcloud_map, cloud_input);
 
-  // 使用体素滤波对点云降采样
+  // Use voxel filtering to downsample point clouds
   _voxel_sampler.setLeafSize(0.1f, 0.1f, 0.1f);
   _voxel_sampler.setInputCloud(cloud_input.makeShared());
-  // 结果保存在_cloud_all_map中
+  // The results are stored in _cloud_all_map
   _voxel_sampler.filter(_cloud_all_map);
 
   _kdtreeLocalMap.setInputCloud(_cloud_all_map.makeShared());
@@ -105,7 +105,7 @@ void rcvGlobalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr 
 void renderSensedPoints(/*const rclcpp::TimerBase event*/) {
   if (!has_global_map || !has_odom) return;
 
-  // 获取无人机姿态
+  // Get the drone's attitude
   Eigen::Quaterniond q;
   q.x() = _odom.pose.pose.orientation.x;
   q.y() = _odom.pose.pose.orientation.y;
@@ -114,10 +114,10 @@ void renderSensedPoints(/*const rclcpp::TimerBase event*/) {
 
   Eigen::Matrix3d rot;
   rot = q;
-  // 转换为旋转矩阵
+  // Convert to rotation matrix
   Eigen::Vector3d yaw_vec = rot.col(0);
 
-  // 清空并初始化点云数据
+  // Clear and initialize point cloud data
   _local_map.points.clear();
   pcl::PointXYZ searchPoint(_odom.pose.pose.position.x,
                             _odom.pose.pose.position.y,
@@ -126,20 +126,20 @@ void renderSensedPoints(/*const rclcpp::TimerBase event*/) {
   _pointRadiusSquaredDistance.clear();
 
   pcl::PointXYZ pt;
-  // 进行半径搜索获取感知范围内的点
+  // Perform a radius search to obtain points within the perception range
   if (_kdtreeLocalMap.radiusSearch(searchPoint, sensing_horizon,
                                    _pointIdxRadiusSearch,
                                    _pointRadiusSquaredDistance) > 0) {
-    // 遍历每个搜索到的点
+    // Iterate through each searched point
     for (size_t i = 0; i < _pointIdxRadiusSearch.size(); ++i) {
       pt = _cloud_all_map.points[_pointIdxRadiusSearch[i]];
 
-      // 设置最大仰角
+      // Set maximum elevation angle
       if ((fabs(pt.z - _odom.pose.pose.position.z) / sensing_horizon) >
           tan(M_PI / 6.0))
         continue;
 
-      // 检查点是否在无人机视野内
+      // Check if the checkpoint is within the drone's field of view
       Eigen::Vector3d pt_vec(pt.x - _odom.pose.pose.position.x,
                              pt.y - _odom.pose.pose.position.y,
                              pt.z - _odom.pose.pose.position.z);
@@ -152,7 +152,7 @@ void renderSensedPoints(/*const rclcpp::TimerBase event*/) {
     return;
   }
 
-  // 设置局部地图属性并发布
+  // Set local map properties and publish
   _local_map.width = _local_map.points.size();
   _local_map.height = 1;
   _local_map.is_dense = true;
@@ -169,13 +169,13 @@ void rcvLocalPointCloudCallBack(
 }
 
 int main(int argc, char** argv) {
-  // 初始化ROS2
+  // Initialize ROS2
   rclcpp::init(argc, argv);
 
-  // 创建节点
+  // Create node
   auto node = rclcpp::Node::make_shared("pcl_render");
 
-  // 使用 declare_parameter 来声明参数并读取参数
+  // Use declare_parameter to declare and read parameters.
   node->declare_parameter("sensing_horizon", 0.0);
   node->declare_parameter("sensing_rate", 0.0);
   node->declare_parameter("estimation_rate", 0.0);
@@ -191,18 +191,18 @@ int main(int argc, char** argv) {
   node->get_parameter("map/y_size", _y_size);
   node->get_parameter("map/z_size", _z_size);
 
-  // 订阅点云数据
+  // Subscribe to point cloud data
   global_map_sub = node->create_subscription<sensor_msgs::msg::PointCloud2>(
       "global_map", 1, rcvGlobalPointCloudCallBack);
   local_map_sub = node->create_subscription<sensor_msgs::msg::PointCloud2>(
       "local_map", 1, rcvLocalPointCloudCallBack);
   odom_sub = node->create_subscription<nav_msgs::msg::Odometry>(
-      "odometry", 50, rcvOdometryCallbck);
+      "/odometry", 50, rcvOdometryCallbck);
 
-  // 发布者：点云数据
+  // Published by: Point Cloud Data
   pub_cloud = node->create_publisher<sensor_msgs::msg::PointCloud2>("pcl_render_node/cloud", 10);
 
-  // 定时器：控制渲染频率
+  // Timer: Controls rendering frequency
   double sensing_duration = 1.0 / sensing_rate * 2.5;
   local_sensing_timer = node->create_wall_timer(
       std::chrono::duration<double>(sensing_duration), std::bind(&renderSensedPoints));

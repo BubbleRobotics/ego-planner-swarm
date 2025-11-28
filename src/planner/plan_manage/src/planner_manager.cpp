@@ -65,7 +65,7 @@ namespace ego_planner
     rclcpp::Duration t_init(0, 0), t_opt(0, 0), t_refine(0, 0);
 
     /*** STEP 1: INIT
-    根据起始点和目标点的距离计算首个时间步长ts,向量的模大于0.1则用1.5倍否则用5倍
+    Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 5×.
     ***/
     double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
@@ -77,20 +77,23 @@ namespace ego_planner
       start_end_derivatives.clear();
       flag_regenerate = false;
 
-      // 这里如果正常进入if（通常为初次生成），则do部分只进行一次，即只清空一次点集；若进入else则有可能对异常情况重置flag_regenerate并再do一次
+      
+      // If we enter the if-branch normally (usually on the first run), the do-block executes only once and just clears the point set.
+      // If we enter the else-branch, abnormal situations may set flag_regenerate to true, causing the do-block to run again.
       if (flag_first_call || flag_polyInit || flag_force_polynomial /*|| ( start_pt - local_target_pt ).norm() < 1.0*/) // Initial path generated from a min-snap traj by order.
       {
+        std::cout << "Initial path generated from polynomial trajectory." << flag_first_call << flag_polyInit << flag_force_polynomial << std::endl;
         flag_first_call = false;
         flag_force_polynomial = false;
-        // 用于存储生成的轨迹
+        // Used to store the generated trajectory
         PolynomialTraj gl_traj;
 
         double dist = (start_pt - local_target_pt).norm();
-        // 判断 速度的平方/加速度 是否大于dist，并决定如何计算时间
+        // Check whether (velocity^2 / acceleration) is greater than dist and decide how to compute the time
         double time = pow(pp_.max_vel_, 2) / pp_.max_acc_ > dist ? sqrt(dist / pp_.max_acc_) : (dist - pow(pp_.max_vel_, 2) / pp_.max_acc_) / pp_.max_vel_ + 2 * pp_.max_vel_ / pp_.max_acc_;
 
         if (!flag_randomPolyTraj)
-        // false生成一段单一的多项式轨迹，true生成一个包含随机插入点的轨迹
+        // false → generate a single polynomial segment, true → generate a trajectory with random inserted points
         {
           gl_traj = PolynomialTraj::one_segment_traj_gen(start_pt, start_vel, start_acc, local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), time);
         }
@@ -139,7 +142,7 @@ namespace ego_planner
       }
       else // Initial path generated from previous trajectory.
       {
-
+        std::cout << "From Previous polynomial trajectory." << std::endl;
         double t;
         double t_cur = (rclcpp::Clock().now() - local_data_.start_time_).seconds();
 
@@ -216,13 +219,13 @@ namespace ego_planner
       }
     } while (flag_regenerate);
 
-    // 将轨迹变为B样条轨迹
+    // Convert the trajectory into a B-spline trajectory
     Eigen::MatrixXd ctrl_pts, ctrl_pts_temp;
     UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
 
     vector<std::pair<int, int>> segments;
     segments = bspline_optimizer_->initControlPoints(ctrl_pts, true);
-    // 计算时间差并更新时间
+    // Compute the time difference and update the time
     auto now = rclcpp::Clock().now();
     t_init = now - t_start;
     t_start = now;
@@ -475,8 +478,10 @@ namespace ego_planner
     const double dist_thresh = 4.0;
 
     for (size_t i = 0; i < points.size() - 1; ++i)
-    /*挨个读取点并计算点距判断是否需要插点，随后计算插点并写入矩阵，最后根据插点数量生成全局轨迹
-      最终返回值为是否规划成功的布尔值 */
+    /*Read each point and compute distances to determine whether interpolation points are needed,
+       then compute inserted points and write them into the matrix,
+       and finally generate the global trajectory based on the number of inserted points.
+       The return value indicates whether planning succeeded. */
     {
       inter_points.push_back(points.at(i));
       double dist = (points.at(i + 1) - points.at(i)).norm();

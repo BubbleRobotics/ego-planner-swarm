@@ -11,7 +11,7 @@ namespace detect
   {
     readParameters();
 
-    // 创建订阅器
+    // Create subscribers
     my_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
         "odometry", 100, std::bind(&DroneDetector::rcvMyOdomCallback, this, std::placeholders::_1));
 
@@ -21,18 +21,18 @@ namespace detect
     droneX_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
         "/others_odom", 100, std::bind(&DroneDetector::rcvDroneXOdomCallback, this, std::placeholders::_1));
 
-    // 创建发布器
+    // Create publishers
     new_depth_img_pub_ = this->create_publisher<sensor_msgs::msg::Image>("new_depth_image", 50);
     debug_depth_img_pub_ = this->create_publisher<sensor_msgs::msg::Image>("debug_depth_image", 50);
     debug_info_pub_ = this->create_publisher<std_msgs::msg::String>("/debug_info", 50);
 
-    // 初始化变换矩阵
+    // Initialize camera-to-body transform matrix
     cam2body_ << 0.0, 0.0, 1.0, 0.0,
         -1.0, 0.0, 0.0, 0.0,
         0.0, -1.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 1.0;
 
-    // 初始化其他无人机的位姿误差发布器
+    // Initialize pose error publishers for other drones
     for (int i = 0; i < max_drone_num_; i++)
     {
       if (i != my_id_)
@@ -51,7 +51,7 @@ namespace detect
 
   void DroneDetector::readParameters()
   {
-    // 声明参数并获取
+    // Declare parameters and get them
     this->declare_parameter("cam_width", 640);
     this->declare_parameter("cam_height", 480);
     this->declare_parameter("cam_fx", 525.0);
@@ -66,7 +66,7 @@ namespace detect
     this->declare_parameter("estimate/drone_height", 0.5);
     this->declare_parameter("estimate/max_pose_error", 0.1);
 
-    // 获取参数值
+    // Get parameter values
     this->get_parameter("cam_width", img_width_);
     this->get_parameter("cam_height", img_height_);
     this->get_parameter("cam_fx", fx_);
@@ -156,7 +156,7 @@ namespace detect
     body2world(1, 3) = my_pose_world_(1);
     body2world(2, 3) = my_pose_world_(2);
 
-    // convert to cam pose
+    // Convert to camera pose
     cam2world_ = body2world * cam2body_;
     cam2world_quat_ = cam2world_.block<3, 3>(0, 0);
 
@@ -178,7 +178,7 @@ namespace detect
 
   void DroneDetector::rcvDepthImgCallback(const sensor_msgs::msg::Image::ConstPtr &depth_img)
   {
-    /* 获取深度图像 */
+    /* Get depth image */
     cv_bridge::CvImagePtr cv_ptr;
     cv_ptr = cv_bridge::toCvCopy(depth_img, depth_img->encoding);
     cv_ptr->image.copyTo(depth_img_);
@@ -199,7 +199,7 @@ namespace detect
     {
       if (in_depth_[i])
       {
-        // 擦除深度图像中的像素点
+        // Erase the detected drone pixels in the depth image
         for (int k = 0; k < int(hit_pixels_[i].size()); k++)
         {
           uint16_t *row_ptr;
@@ -226,7 +226,7 @@ namespace detect
       {
         if (in_depth_[i])
         {
-          // 在调试图像中添加边界框
+          // Draw search box and bounding box on debug image
           cv::rectangle(depth_img_, cv::Rect(searchbox_lu_[i], searchbox_rd_[i]), cv::Scalar(0, 0, 0), 5, cv::LINE_8, 0);
           cv::rectangle(depth_img_, cv::Rect(boundingbox_lu_[i], boundingbox_rd_[i]), cv::Scalar(0, 0, 0), 5, cv::LINE_8, 0);
           if (debug_detect_result_[i] == 1)
@@ -277,7 +277,7 @@ namespace detect
     drone2world(2, 3) = drone_pose_world_[drone_id](2);
 
     drone_pose_cam_[drone_id] = cam2world_.inverse() * drone_pose_world_[drone_id];
-    // if the drone is in sensor range
+    // If the drone is in the camera’s field of view
     drone_ref_pixel_[drone_id] = pos2Depth(drone_pose_cam_[drone_id]);
     if (drone_pose_cam_[drone_id](2) > 0 && isInSensorRange(drone_ref_pixel_[drone_id]))
     {
@@ -337,7 +337,7 @@ namespace detect
     searchbox_lu_[drone_id].y = drone_ref_pixel_[drone_id](1) - search_radius;
     searchbox_rd_[drone_id].x = drone_ref_pixel_[drone_id](0) + search_radius;
     searchbox_rd_[drone_id].y = drone_ref_pixel_[drone_id](1) + search_radius;
-    // check the tmp_p around ref_pixel
+    // Check candidate pixels around the reference pixel
     for (int i = -search_radius; i <= search_radius; i++)
       for (int j = -search_radius; j <= search_radius; j++)
       {
@@ -350,7 +350,7 @@ namespace detect
         row_ptr = depth_img_.ptr<uint16_t>(tmp_pixel(1));
         depth = (*(row_ptr + tmp_pixel(0))) / 1000.0;
         // ROS_WARN("depth = %lf", depth);
-        // get tmp_pose in cam frame
+        // Get tmp pose in camera frame
         tmp_pose_cam = depth2Pos(tmp_pixel(0), tmp_pixel(1), depth);
         double dist2 = getDist2(tmp_pose_cam, drone_pose_cam_[drone_id]);
         // ROS_WARN("dist2 = %lf", dist2);

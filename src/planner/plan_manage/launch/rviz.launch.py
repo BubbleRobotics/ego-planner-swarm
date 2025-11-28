@@ -11,10 +11,10 @@ def generate_launch_description():
             package='rviz2', executable='rviz2', output='screen',
             arguments=['--display-config', rviz_config_path])
 
-    # 定义 LaunchDescription
+    # Define LaunchDescription
     ld = LaunchDescription()
 
-    # 添加节点
+    # Add node
     ld.add_action(rviz_node)
 
     return ld

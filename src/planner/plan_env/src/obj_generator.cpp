@@ -68,7 +68,7 @@ int main(int argc, char **argv)
   auto node = rclcpp::Node::make_shared("dynamic_obj");
 
   /* ---------- initialize ---------- */
-  /* 参数读取 */
+  /* Parameter loading */
   node->declare_parameter("obj_generator/obj_num", 20);
   node->declare_parameter("obj_generator/x_size", 10.0);
   node->declare_parameter("obj_generator/y_size", 10.0);
@@ -229,7 +229,7 @@ void visualizeObj(int id)
 
   /* ---------- rviz ---------- */
   visualization_msgs::msg::Marker mk;
-  mk.header.frame_id = "world";
+  mk.header.frame_id = "ego_world";
   mk.header.stamp = rclcpp::Clock().now();
   mk.type = visualization_msgs::msg::Marker::CUBE;
   mk.action = visualization_msgs::msg::Marker::ADD;
@@ -249,7 +249,7 @@ void visualizeObj(int id)
 
   /* ---------- pose ---------- */
   geometry_msgs::msg::PoseStamped pose;
-  pose.header.frame_id = "world";
+  pose.header.frame_id = "ego_world";
   // pose.header.seq = id;
   pose.pose.position.x = pos(0), pose.pose.position.y = pos(1), pose.pose.position.z = pos(2);
   pose.pose.orientation.w = 1.0;

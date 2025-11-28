@@ -40,15 +40,15 @@ void quadToImuMsg(const QuadrotorSimulator::Quadrotor &quad,
                   sensor_msgs::msg::Imu &imu);
 
 static Control
-// 根据无人机的当前状态和目标控制指令计算四个电机所需的转速（RPM）
+// Compute the required motor RPMs based on the UAV's current state and the target control command
 getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
 {
-    const double _kf = quad.getPropellerThrustCoefficient(); // 推力系数
-    const double _km = quad.getPropellerMomentCoefficient(); // 力矩系数
-    const double kf = _kf - cmd.corrections[0];              // 补偿无人机推力偏差
-    const double km = _km / _kf * kf;                        // 更新推力和力矩的比例
+    const double _kf = quad.getPropellerThrustCoefficient(); // Thrust coefficient
+    const double _km = quad.getPropellerMomentCoefficient(); // Moment coefficient
+    const double kf = _kf - cmd.corrections[0];              // Compensate UAV thrust deviation
+    const double km = _km / _kf * kf;                        // Update ratio between thrust and moment
 
-    // 获取无人机的臂长 d 和惯性矩阵 J
+    // Get UAV arm length d and inertia matrix J
     const double d = quad.getArmLength();
     const Eigen::Matrix3f J = quad.getInertia().cast<float>();
     const float I[3][3] = {{J(0, 0), J(0, 1), J(0, 2)},
@@ -57,7 +57,7 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
     const QuadrotorSimulator::Quadrotor::State state = quad.getState();
 
     // Rotation, may use external yaw
-    // 当前姿态的旋转矩阵转换为欧拉角
+    // Convert current attitude rotation matrix to Euler angles
     Eigen::Vector3d _ypr = uav_utils::R_to_ypr(state.R);
     Eigen::Vector3d ypr = _ypr;
     if (cmd.use_external_yaw)
@@ -90,7 +90,7 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
     float Om2 = state.omega(1);
     float Om3 = state.omega(2);
 
-    // 通过指令的数据生成目标姿态的旋转矩阵
+    // Generate the desired rotation matrix from the command quaternion
     float Rd11 =
         cmd.qw * cmd.qw + cmd.qx * cmd.qx - cmd.qy * cmd.qy - cmd.qz * cmd.qz;
     float Rd12 = 2 * (cmd.qx * cmd.qy - cmd.qw * cmd.qz);
@@ -104,17 +104,17 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
     float Rd33 =
         cmd.qw * cmd.qw - cmd.qx * cmd.qx - cmd.qy * cmd.qy + cmd.qz * cmd.qz;
 
-    // 通过当前旋转矩阵和目标旋转矩阵计算稳定性指标
+    // Compute stability metric from current rotation and desired rotation
     float Psi = 0.5f * (3.0f - (Rd11 * R11 + Rd21 * R21 + Rd31 * R31 +
                                 Rd12 * R12 + Rd22 * R22 + Rd32 * R32 +
                                 Rd13 * R13 + Rd23 * R23 + Rd33 * R33));
 
     float force = 0;
-    // 如果稳定性条件满足，根据期望的力方向和当前旋转矩阵计算推力
+    // If stability condition is satisfied, compute thrust from desired force direction and rotation matrix
     if (Psi < 1.0f) // Position control stability guaranteed only when Psi < 1
         force = cmd.force[0] * R13 + cmd.force[1] * R23 + cmd.force[2] * R33;
 
-    // 计算旋转误差和角速度误差
+    // Compute rotation error and angular velocity error
     float eR1 = 0.5f * (R12 * Rd13 - R13 * Rd12 + R22 * Rd23 - R23 * Rd22 +
                         R32 * Rd33 - R33 * Rd32);
     float eR2 = 0.5f * (R13 * Rd11 - R11 * Rd13 - R21 * Rd23 + R23 * Rd21 -
@@ -126,7 +126,7 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
     float eOm2 = Om2;
     float eOm3 = Om3;
 
-    // 计算角速度引起的非线性耦合补偿项
+    // Compute nonlinear coupling compensation terms due to angular velocities
     float in1 = Om2 * (I[2][0] * Om1 + I[2][1] * Om2 + I[2][2] * Om3) -
                 Om3 * (I[1][0] * Om1 + I[1][1] * Om2 + I[1][2] * Om3);
     float in2 = Om3 * (I[0][0] * Om1 + I[0][1] * Om2 + I[0][2] * Om3) -
@@ -147,12 +147,12 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
       float muR3 = -deltaR*deltaR * eA3 / (deltaR * neA + epsilonR);
       // Robust Control --------------------------------------------
     */
-    // 根据旋转误差、角速度误差和耦合补偿计算力矩
-    float M1 = -cmd.kR[0] * eR1 - cmd.kOm[0] * eOm1 + in1; // - I[0][0]*muR1;
-    float M2 = -cmd.kR[1] * eR2 - cmd.kOm[1] * eOm2 + in2; // - I[1][1]*muR2;
-    float M3 = -cmd.kR[2] * eR3 - cmd.kOm[2] * eOm3 + in3; // - I[2][2]*muR3;
+    // Compute moments based on rotation error, angular velocity error, and compensation
+    float M1 = -cmd.kR[0] * eR1 - cmd.kOm[0] * eOm1 + in1;
+    float M2 = -cmd.kR[1] * eR2 - cmd.kOm[1] * eOm2 + in2;
+    float M3 = -cmd.kR[2] * eR3 - cmd.kOm[2] * eOm3 + in3;
 
-    // 通过线性分配公式，将总推力和力矩分配到四个电机
+    // Distribute total thrust and moments to the four motors using linear allocation formula
     float w_sq[4];
     w_sq[0] = force / (4 * kf) - M2 / (2 * d * kf) + M3 / (4 * km);
     w_sq[1] = force / (4 * kf) + M2 / (2 * d * kf) + M3 / (4 * km);
@@ -162,7 +162,7 @@ getControl(const QuadrotorSimulator::Quadrotor &quad, const Command &cmd)
     Control control;
     for (int i = 0; i < 4; i++)
     {
-        // 将负的推力值截断为零，并通过平方根计算每个电机的转速
+        // Clamp negative thrust values to zero and take square root to compute motor RPM
         if (w_sq[i] < 0)
             w_sq[i] = 0;
 
@@ -192,6 +192,7 @@ cmd_callback(const quadrotor_msgs::msg::SO3Command::ConstPtr &cmd)
     command.corrections[2] = cmd->aux.angle_corrections[1];
     command.current_yaw = cmd->aux.current_yaw;
     command.use_external_yaw = cmd->aux.use_external_yaw;
+
 }
 
 static void
@@ -216,7 +217,6 @@ void stateToOdomMsg(const QuadrotorSimulator::Quadrotor::State &state,
     odom.pose.pose.position.x = state.x(0);
     odom.pose.pose.position.y = state.x(1);
     odom.pose.pose.position.z = state.x(2);
-
     Eigen::Quaterniond q(state.R);
     odom.pose.pose.orientation.x = q.x();
     odom.pose.pose.orientation.y = q.y();
@@ -255,14 +255,14 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
 
-    // 初始化节点
+    // Initialize node
     auto node = rclcpp::Node::make_shared("quadrotor_simulator_so3");
 
-    // 发布者
-    auto odom_pub_ = node->create_publisher<nav_msgs::msg::Odometry>("odom", 100);
+    // Publishers
+    auto odom_pub_ = node->create_publisher<nav_msgs::msg::Odometry>("old_odom", 100);
     auto imu_pub_ = node->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
 
-    // 订阅者
+    // Subscribers
     auto cmd_sub_ = node->create_subscription<quadrotor_msgs::msg::SO3Command>(
         "cmd", 100, cmd_callback);
 
@@ -272,7 +272,7 @@ int main(int argc, char **argv)
     auto m_sub_ = node->create_subscription<geometry_msgs::msg::Vector3>(
         "moment_disturbance", 100, moment_disturbance_callback);
 
-    // 获取参数
+    // Load parameters
     node->declare_parameter("simulator/init_state_x", 0.0);
     node->declare_parameter("simulator/init_state_y", 0.0);
     node->declare_parameter("simulator/init_state_z", 1.0);
@@ -285,7 +285,6 @@ int main(int argc, char **argv)
     node->get_parameter("simulator/init_state_x", _init_x);
     node->get_parameter("simulator/init_state_y", _init_y);
     node->get_parameter("simulator/init_state_z", _init_z);
-
 
     Eigen::Vector3d position = Eigen::Vector3d(_init_x, _init_y, _init_z);
     quad.setStatePos(position);
@@ -309,7 +308,7 @@ int main(int argc, char **argv)
     Control control;
 
     nav_msgs::msg::Odometry odom_msg;
-    odom_msg.header.frame_id = "/world";
+    odom_msg.header.frame_id = "/ego_world";
     odom_msg.child_frame_id = "/" + quad_name;
 
     sensor_msgs::msg::Imu imu;

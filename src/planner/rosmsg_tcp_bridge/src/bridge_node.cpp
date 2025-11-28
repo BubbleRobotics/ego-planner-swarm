@@ -625,7 +625,7 @@ void multitraj_sub_tcp_cb(const std::shared_ptr<const traj_utils::msg::MultiBspl
   }
 }
 
-// mmz@todo 原本代码中这里传的是const，但是下面修改了msg，const会报错，还不知道为什么, 只能创建一个副本
+// mmz@todo The original code passed `const` here, but after modifying `msg`, `const` throws an error, and I don't know why. It can only create one copy.
 void odom_sub_udp_cb(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
 {
 
@@ -638,10 +638,10 @@ void odom_sub_udp_cb(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
   t_last = t_now;
 
   // msg->child_frame_id = string("drone_") + std::to_string(drone_id_);
-  // 创建消息的副本
+  // Create a copy of the message
   auto mutable_msg = std::make_shared<nav_msgs::msg::Odometry>(*msg);
 
-  // 修改消息的 child_frame_id
+  // Modify the child_frame_id of the message
   mutable_msg->child_frame_id = "drone_" + std::to_string(drone_id_);
 
   // int len = serializeOdom(msg);
@@ -787,11 +787,11 @@ void udp_recv_fun()
 
 int main(int argc, char *argv[])
 {
-  // 初始化ROS节点
+  // Initialize ROS nodes
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("rosmsg_tcp_bridge");
 
-  // 读取参数
+  // Read parameters
   node->declare_parameter("next_drone_ip", string("127.0.0.1"));
   node->declare_parameter("broadcast_ip", string("127.0.0.255"));
   node->declare_parameter("drone_id", -1);

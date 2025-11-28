@@ -166,7 +166,7 @@ void cmdCallback()
   if (!receive_traj_)
     return;
 
-  // 统一时间源
+  // unified time source
   rclcpp::Clock clock(RCL_ROS_TIME);  
   rclcpp::Time time_now = clock.now();
   double t_cur = (time_now - start_time_).seconds();
@@ -207,7 +207,7 @@ void cmdCallback()
   time_last = time_now;
 
   cmd.header.stamp = time_now;
-  cmd.header.frame_id = "world";
+  cmd.header.frame_id = "ego_world";
   cmd.trajectory_flag = quadrotor_msgs::msg::PositionCommand::TRAJECTORY_STATUS_READY;
   cmd.trajectory_id = traj_id_;
 
@@ -225,6 +225,7 @@ void cmdCallback()
 
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
+
 
   last_yaw_ = cmd.yaw;
 

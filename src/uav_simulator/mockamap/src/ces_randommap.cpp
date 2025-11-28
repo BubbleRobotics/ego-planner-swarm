@@ -39,7 +39,7 @@ using namespace mocka;
 #if MAP_OR_WORLD
 const string kFrameIdNs_ = "map";
 #else
-const string kFrameIdNs_ = "world";
+const string kFrameIdNs_ = "ego_world";
 #endif
 
 pcl::search::KdTree<pcl::PointXYZ> kdtreeLocalMap;
@@ -76,13 +76,13 @@ typedef Eigen::Vector3d ObsSize; // x, y, height --- z
 typedef pair<ObsPos, ObsPos> Obstacle;
 std::vector<Obstacle> obstacle_list;
 
-// 生成固定的障碍物地图
+// Generate a fixed obstacle map
 void fixedMapGenerate()
 {
   double _resolution = 1.0;
 
   cloudMap.points.clear();
-  // 定义障碍物列表
+  // Define the list of obstacles
   obstacle_list.push_back(
     make_pair(ObsPos(-7.0, 1.0, 0.0), ObsSize(1.0, 3.0, 5.0)));
   obstacle_list.push_back(
@@ -101,7 +101,7 @@ void fixedMapGenerate()
   obstacle_list.push_back(
     make_pair(ObsPos(5.0, -2.5, 0.0), ObsSize(30.0, 1.0, 5.0)));
 
-  // 遍历障碍物并将其体素化为点云
+  // Traverse the obstacles and convert them into point clouds
   int num_total_obs = obstacle_list.size();
   pcl::PointXYZ pt_insert;
 
@@ -128,7 +128,7 @@ void fixedMapGenerate()
     left_z  = 0;
     right_z = num_mesh_z;
 
-    // 将障碍物的边界体素添加到点云
+    // Add boundary voxels of obstacles to the point cloud
     for (int r = left_x; r < right_x; r++)
       for (int s = left_y; s < right_y; s++)
       {
@@ -146,7 +146,7 @@ void fixedMapGenerate()
       }
   }
 
-  // 设置点云属性并构建KD树
+  // Set point cloud properties and build KD tree
   cloudMap.width    = cloudMap.points.size();
   cloudMap.height   = 1;
   cloudMap.is_dense = true;
@@ -157,7 +157,7 @@ void fixedMapGenerate()
   map_ok = true;
 }
 
-// 里程计信息回调
+// Odometer information callback
 void rcvOdometryCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
   if (odom->child_frame_id == "X" || odom->child_frame_id == "O")

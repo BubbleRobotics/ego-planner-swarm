@@ -10,17 +10,17 @@ from launch.substitutions import PythonExpression
 from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
-    # 定义参数的 LaunchConfiguration
+    # Definition of LaunchConfiguration parameters
     obj_num = LaunchConfiguration('obj_num', default=10)
     drone_id = LaunchConfiguration('drone_id', default=0)
     
     map_size_x = LaunchConfiguration('map_size_x', default = 50.0)
     map_size_y = LaunchConfiguration('map_size_y', default = 25.0)
-    map_size_z = LaunchConfiguration('map_size_z', default = 2.0)
-    odom_topic = LaunchConfiguration('odom_topic', default = 'visual_slam/odom')
+    map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
+    odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     
     
-    # 声明全局参数
+    # Declare global parameters
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
     drone_id_cmd = DeclareLaunchArgument('drone_id', default_value=drone_id, description='Drone ID')
     
@@ -29,7 +29,7 @@ def generate_launch_description():
     map_size_z_cmd = DeclareLaunchArgument('map_size_z', default_value=map_size_z, description='Map size along z')
     odom_topic_cmd = DeclareLaunchArgument('odom_topic', default_value=odom_topic, description='Odometry topic')
 
-    # 地图属性以及是否使用动力学仿真
+    # Map properties and whether to use dynamic simulation
     use_mockamap = LaunchConfiguration('use_mockamap', default=False) # map_generator or mockamap 
     
     use_mockamap_cmd = DeclareLaunchArgument('use_mockamap', default_value=use_mockamap, description='Choose map type, map_generator or mockamap')
@@ -46,7 +46,7 @@ def generate_launch_description():
         parameters=[
             {'map/x_size': 26.0},
             {'map/y_size': 20.0},
-            {'map/z_size': 3.0},
+            {'map/z_size': 13.0},
             {'map/resolution': 0.1},
             {'ObstacleShape/seed': 1.0},
             {'map/obs_num': 250},
@@ -110,31 +110,31 @@ def generate_launch_description():
             'cy': str(243.44969177246094),
             'fx': str(387.229248046875),
             'fy': str(387.229248046875),
-            'max_vel': str(2.0),
-            'max_acc': str(6.0),
-            'planning_horizon': str(7.5),
+            'max_vel': str(0.15),
+            'max_acc': str(0.2),
+            'planning_horizon': str(5.0),
             'use_distinctive_trajs': 'True',
             'flight_type': str(2),
             'point_num': str(4),
-            'point0_x': str(15.0),
+            'point0_x': str(8.0),
             'point0_y': str(0.0),
-            'point0_z': str(1.0),
+            'point0_z': str(-2.0),
             
-            'point1_x': str(-15.0),
+            'point1_x': str(-8.0),
             'point1_y': str(0.0),
-            'point1_z': str(1.0),
+            'point1_z': str(-2.0),
             
-            'point2_x': str(15.0),
-            'point2_y': str(0.0),
-            'point2_z': str(1.0),
+            'point2_x': str(8.0),
+            'point2_y': str(8.0),
+            'point2_z': str(-2.0),
             
-            'point3_x': str(-15.0),
-            'point3_y': str(0.0),
-            'point3_z': str(1.0),
+            'point3_x': str(-8.0),
+            'point3_y': str(-8.0),
+            'point3_z': str(-2.0),
             
-            'point4_x': str(15.0),
+            'point4_x': str(8.0),
             'point4_y': str(0.0),
-            'point4_z': str(1.0),
+            'point4_z': str(-2.0),
         }.items()
     )
     
@@ -162,9 +162,9 @@ def generate_launch_description():
             'map_size_x_': map_size_x,
             'map_size_y_': map_size_y,
             'map_size_z_': map_size_z,
-            'init_x_': str(-15.0),
+            'init_x_': str(0.0),
             'init_y_': str(0.0),
-            'init_z_': str(0.1),
+            'init_z_': str(-2.0),
             'odometry_topic': odom_topic
         }.items()
     )
@@ -180,7 +180,7 @@ def generate_launch_description():
     ld.add_action(use_dynamic_cmd)
     ld.add_action(use_mockamap_cmd)
 
-    # 添加 Map Generator 节点
+    # Add Map Generator node
     ld.add_action(map_generator_node)
     ld.add_action(mockamap_node)
     ld.add_action(advanced_param_include)

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(poscmd_2_odom)
 
-# 设置编译类型和编译选项
+# Set compilation type and compilation options
 set(CMAKE_BUILD_TYPE "Release")
 add_compile_options(-std=c++17)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
@@ -29,15 +29,15 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-# 包含头文件路径
+# Include header file path
 include_directories(
   ${EIGEN3_INCLUDE_DIR}
 )
 
-# 添加可执行文件
+# Add executable file
 add_executable(poscmd_2_odom src/poscmd_2_odom.cpp)
 
-# 链接依赖库
+# Linking dependency libraries
 ament_target_dependencies(poscmd_2_odom
   rclcpp
   nav_msgs
@@ -45,9 +45,9 @@ ament_target_dependencies(poscmd_2_odom
   quadrotor_msgs
 )
 
-# 安装可执行文件
+# Install executable file
 install(TARGETS poscmd_2_odom
   DESTINATION lib/${PROJECT_NAME})
 
-# 让ament自动管理
+# Let ament manage automatically
 ament_package()

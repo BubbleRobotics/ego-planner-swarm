@@ -86,7 +86,7 @@ namespace ego_planner
           });
     }
 
-    // ros2 中topic名字中不能出现负号，单机id是-1需要处理
+    // In ROS 2, topic names cannot contain a minus sign, so a drone ID of -1 needs special handling.
     // string pub_topic_name = string("/drone_") + std::to_string(planner_manager_->pp_.drone_id) + string("_planning/swarm_trajs");
     string pub_topic_name;
     if (planner_manager_->pp_.drone_id <= -1)
@@ -171,13 +171,13 @@ namespace ego_planner
       wps_[i](2) = waypoints_[i][2];
     }
 
-    // 用 visualization_->displayGoalPoint() 方法对waypoint进行可视化
+    // Use the method visualization_->displayGoalPoint() to visualize the waypoint.
     for (size_t i = 0; i < (size_t)waypoint_num_; i++)
     {
       visualization_->displayGoalPoint(wps_[i], Eigen::Vector4d(0, 0.5, 0.5, 1), 0.3, i);
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
+    
     // plan first global waypoint
     wp_id_ = 0;
     planNextWaypoint(wps_[wp_id_]);
@@ -204,7 +204,7 @@ namespace ego_planner
       have_target_ = true;
       have_new_target_ = true;
 
-      /*** FSM状态转换 ***/
+      /*** FSM state transition ***/
       if (exec_state_ == WAIT_TARGET)
         changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
       else
@@ -273,7 +273,7 @@ namespace ego_planner
       return;
 
     // if (abs((ros::Time::now() - msg->start_time).toSec()) > 0.25)
-    rclcpp::Clock clock(RCL_SYSTEM_TIME);  // 确保使用当前节点的时间源
+    rclcpp::Clock clock(RCL_SYSTEM_TIME);  // Ensure the current node’s time source is used.
     auto msg_time = rclcpp::Time(msg->start_time, clock.get_clock_type());
     // RCLCPP_INFO(node_->get_logger(), "Clock type: %d", rclcpp::Clock().now().get_clock_type());
     // RCLCPP_INFO(node_->get_logger(), "Start time clock type: %d", rclcpp::Time(msg->start_time).get_clock_type());
@@ -286,7 +286,7 @@ namespace ego_planner
       return;
     }
 
-    // 路径缓冲区初始化
+    // Initialize trajectory buffer.
     if (planner_manager_->swarm_trajs_buf_.size() <= id)
     {
       for (size_t i = planner_manager_->swarm_trajs_buf_.size(); i <= id; i++)
@@ -324,7 +324,7 @@ namespace ego_planner
 
     planner_manager_->swarm_trajs_buf_[id].drone_id = id;
 
-    // 计算路径持续时间
+    // Calculate the trajectory duration.
     if (msg->order % 2)
     {
       double cutback = (double)msg->order / 2 + 1.5;
@@ -336,7 +336,7 @@ namespace ego_planner
       planner_manager_->swarm_trajs_buf_[id].duration_ = (msg->knots[msg->knots.size() - floor(cutback)] + msg->knots[msg->knots.size() - ceil(cutback)]) / 2;
     }
 
-    // 生成bspline并存储
+    // Generate the B-spline and store it.
     UniformBspline pos_traj(pos_pts, msg->order, msg->knots[1] - msg->knots[0]);
     pos_traj.setKnot(knots);
     planner_manager_->swarm_trajs_buf_[id].position_traj_ = pos_traj;
@@ -380,7 +380,7 @@ namespace ego_planner
     planner_manager_->swarm_trajs_buf_.clear();
     planner_manager_->swarm_trajs_buf_.resize(msg->traj.size());
 
-    // 处理每条路径
+    // Process each trajectory.
     for (size_t i = 0; i < msg->traj.size(); i++)
     {
 
@@ -394,7 +394,7 @@ namespace ego_planner
         continue;
       }
 
-      // 存储路径控制点和节点
+      // Store the trajectory control points and knots.
       Eigen::MatrixXd pos_pts(3, msg->traj[i].pos_pts.size());
       Eigen::VectorXd knots(msg->traj[i].knots.size());
       for (size_t j = 0; j < msg->traj[i].knots.size(); ++j)
@@ -410,7 +410,7 @@ namespace ego_planner
 
       planner_manager_->swarm_trajs_buf_[i].drone_id = i;
 
-      // 计算路径持续时间
+      // Calculate the trajectory duration.
       if (msg->traj[i].order % 2)
       {
         double cutback = (double)msg->traj[i].order / 2 + 1.5;
@@ -633,7 +633,7 @@ namespace ego_planner
     // exec_timer_.start();
     if (exec_timer_ && exec_timer_->is_canceled())
     {
-      // 取消状态下无需重新创建，可以复用现有计时器
+      // No need to recreate when canceled; the existing timer can be reused.
       exec_timer_->reset();
     }
   }
@@ -665,10 +665,10 @@ namespace ego_planner
 
     LocalTrajData *info = &planner_manager_->local_data_;
     // ros::Time time_now = ros::Time::now();
+    
     auto time_now = rclcpp::Clock().now();
     // double t_cur = (time_now - info->start_time_).toSec();
     double t_cur = (time_now - info->start_time_).seconds();
-
     start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
     start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
     start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
@@ -784,7 +784,31 @@ namespace ego_planner
   {
 
     getLocalTarget();
+     // ----------------------------
+    // 1) Compute tracking error
+    // ----------------------------
+    auto info = &planner_manager_->local_data_;
 
+    if (info->duration_ > 1e-3)  // make sure we actually have a previous traj
+    {
+      double t_cur = (rclcpp::Clock().now() - info->start_time_).seconds();
+      t_cur = std::max(0.0, std::min(t_cur, info->duration_));
+
+      Eigen::Vector3d planned_pos = info->position_traj_.evaluateDeBoorT(t_cur);
+      double tracking_error = (planned_pos - odom_pos_).norm();
+
+      if (tracking_error > 1.0)  // TODO tune this threshold
+      {
+        RCLCPP_WARN(
+            node_->get_logger(),
+            "Large tracking error detected: %.2f m. Forcing polynomial initialization.",
+            tracking_error);
+        flag_use_poly_init = true; 
+        start_pt_  = odom_pos_;         
+        start_vel_ = odom_vel_;
+        start_acc_.setZero();           
+      }
+    }
     bool plan_and_refine_success =
         planner_manager_->reboundReplan(start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_, (have_new_target_ || flag_use_poly_init), flag_randomPolyTraj);
     have_new_target_ = false;

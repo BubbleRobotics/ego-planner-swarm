@@ -125,7 +125,7 @@ void SO3ControlComponent::odom_callback(const nav_msgs::msg::Odometry::ConstPtr 
     // std::cout<< "position_cmd_updated_!!!!!!!!!!!!!!!!!!!!!!!" << position_cmd_updated_ << std::endl;
     const Eigen::Vector3d position(odom->pose.pose.position.x,
                                    odom->pose.pose.position.y,
-                                   odom->pose.pose.position.z);
+                                   odom->pose.pose.position.z+1.5);
     const Eigen::Vector3d velocity(odom->twist.twist.linear.x,
                                    odom->twist.twist.linear.y,
                                    odom->twist.twist.linear.z);

@@ -8,7 +8,7 @@ def generate_launch_description():
     # LaunchConfigurations
     map_size_x = LaunchConfiguration('map_size_x_', default=42.0)
     map_size_y = LaunchConfiguration('map_size_y_', default=30.0)
-    map_size_z = LaunchConfiguration('map_size_z_', default=5.0)
+    map_size_z = LaunchConfiguration('map_size_z_', default=13.0)
     
     odometry_topic = LaunchConfiguration('odometry_topic', default='odom')
     camera_pose_topic = LaunchConfiguration('camera_pose_topic', default='camera_pose')
@@ -20,8 +20,8 @@ def generate_launch_description():
     fx = LaunchConfiguration('fx', default=387.229248046875)
     fy = LaunchConfiguration('fy', default=387.229248046875)
     
-    max_vel = LaunchConfiguration('max_vel', default=2.0)
-    max_acc = LaunchConfiguration('max_acc', default=3.0)
+    max_vel = LaunchConfiguration('max_vel', default=0.25)
+    max_acc = LaunchConfiguration('max_acc', default=0.25)
     planning_horizon = LaunchConfiguration('planning_horizon', default=7.5)
     
     point_num = LaunchConfiguration('point_num', default=1)
@@ -41,6 +41,7 @@ def generate_launch_description():
     point4_y = LaunchConfiguration('point4_y', default=30.0)
     point4_z = LaunchConfiguration('point4_z', default=1.0)
 
+    # MANUAL_TARGET = 1, PRESET_TARGET = 2, REFENCE_PATH = 3
     flight_type = LaunchConfiguration('flight_type', default=2)
     use_distinctive_trajs = LaunchConfiguration('use_distinctive_trajs', default=True)
     
@@ -93,7 +94,7 @@ def generate_launch_description():
         name=['drone_', drone_id, '_ego_planner_node'],
         output='screen',
         remappings=[
-            ('odom_world', ['drone_', drone_id, '_', odometry_topic]),
+            ('odom_world', ['model/bluerov2/', odometry_topic]),
             ('planning/bspline', ['drone_', drone_id, '_planning/bspline']),
             ('planning/data_display', ['drone_', drone_id, '_planning/data_display']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
@@ -105,7 +106,7 @@ def generate_launch_description():
             ('optimal_list', ['drone_', drone_id, '_plan_vis/optimal_list']),
             ('a_star_list', ['drone_', drone_id, '_plan_vis/a_star_list']),
             
-            ('grid_map/odom', ['drone_', drone_id, '_', odometry_topic]),
+            ('grid_map/odom', ['model/bluerov2/', odometry_topic]),
             ('grid_map/cloud', ['drone_', drone_id, '_', cloud_topic]),
             ('grid_map/pose', ['drone_', drone_id, '_', camera_pose_topic]),
             ('grid_map/depth', ['drone_', drone_id, '_', depth_topic]),
@@ -145,9 +146,9 @@ def generate_launch_description():
             {'grid_map/local_update_range_x': 5.5},
             {'grid_map/local_update_range_y': 5.5},
             {'grid_map/local_update_range_z': 4.5},
-            {'grid_map/obstacles_inflation': 0.099},
+            {'grid_map/obstacles_inflation': 0.5},
             {'grid_map/local_map_margin': 10},
-            {'grid_map/ground_height': -0.01},
+            {'grid_map/ground_height': -13.0},
             # camera parameter
             {'grid_map/cx': cx},
             {'grid_map/cy': cy},
@@ -170,15 +171,15 @@ def generate_launch_description():
             {'grid_map/min_ray_length': 0.1},
             {'grid_map/max_ray_length': 4.5},
             
-            {'grid_map/virtual_ceil_height': 2.9},
+            {'grid_map/virtual_ceil_height': -0.5},
             {'grid_map/visualization_truncate_height': 1.8},
             {'grid_map/show_occ_time': False},
             {'grid_map/pose_type': 1},
-            {'grid_map/frame_id': "world"},
+            {'grid_map/frame_id': "ego_world"},
             # planner manager
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},
-            {'manager/max_jerk': 4.0},
+            {'manager/max_jerk': 2.0},
             {'manager/control_points_distance': 0.4},
             {'manager/feasibility_tolerance': 0.05},
             {'manager/planning_horizon': planning_horizon},

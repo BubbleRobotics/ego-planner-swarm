@@ -4,21 +4,23 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    # 定义 LaunchConfiguration
+    # Define LaunchConfiguration
     drone_id = LaunchConfiguration('drone_id', default = 1)
     
-    # 声明参数
+    # Declare parameters
     drone_id_cmd = DeclareLaunchArgument(
         'drone_id',
         default_value= drone_id,
         description='ID of the drone'
     )
 
-    # 节点定义
+    # Node definition
     rosmsg_tcp_bridge_node = Node(
         package='rosmsg_tcp_bridge',
         executable='bridge_node',
-        name=['bridge_node_', drone_id],  # 动态生成节点名称
+        name=['bridge_node_', drone_id],  # Dynamically generate node names
+
+
         output='screen',
         parameters=[
             {'next_drone_ip': '127.0.0.1'},
@@ -33,13 +35,13 @@ def generate_launch_description():
         ]
     )
 
-    # 定义 LaunchDescription
+    # Define LaunchDescription
     ld = LaunchDescription()
 
-    # 添加参数声明
+    # Add parameter declarations
     ld.add_action(drone_id_cmd)
 
-    # 添加节点
+    # Add node
     ld.add_action(rosmsg_tcp_bridge_node)
 
     return ld

@@ -99,7 +99,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     // Pose
     poseROS.header = msg->header;
     poseROS.header.stamp = msg->header.stamp;
-    poseROS.header.frame_id = string("world");
+    poseROS.header.frame_id = string("ego_world");
     poseROS.pose.position.x = pose(0);
     poseROS.pose.position.y = pose(1);
     poseROS.pose.position.z = pose(2);
@@ -116,7 +116,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     yprVel(1) = -atan2(vel(2), norm(vel.rows(0, 1), 2));
     yprVel(2) = 0;
     q = R_to_quaternion(ypr_to_R(yprVel));
-    velROS.header.frame_id = string("world");
+    velROS.header.frame_id = string("ego_world");
     velROS.header.stamp = msg->header.stamp;
     velROS.ns = string("velocity");
     velROS.id = 0;
@@ -186,7 +186,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
                 }
             }
         }
-        covROS.header.frame_id = string("world");
+        covROS.header.frame_id = string("ego_world");
         covROS.header.stamp = msg->header.stamp;
         covROS.ns = string("covariance");
         covROS.id = 0;
@@ -234,7 +234,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
                     }
                 }
             }
-            covVelROS.header.frame_id = string("world");
+            covVelROS.header.frame_id = string("ego_world");
             covVelROS.header.stamp = msg->header.stamp;
             covVelROS.ns = string("covariance_velocity");
             covVelROS.id = 0;
@@ -265,7 +265,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     rclcpp::Time t = msg->header.stamp;
     if ((t - pt).seconds() > 0.5)
     {
-        trajROS.header.frame_id = string("world");
+        trajROS.header.frame_id = string("ego_world");
         trajROS.header.stamp = rclcpp::Clock().now();
         trajROS.ns = string("trajectory");
         trajROS.type = visualization_msgs::msg::Marker::LINE_LIST;
@@ -306,7 +306,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     }
 
     // Sensor availability
-    sensorROS.header.frame_id = string("world");
+    sensorROS.header.frame_id = string("ego_world");
     sensorROS.header.stamp = msg->header.stamp;
     sensorROS.ns = string("sensor");
     sensorROS.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
@@ -386,7 +386,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 
     if (tf45)
     {
-        // 创建 tf2 Transform
+        // Create a tf2 Transform
         tf2::Transform transform;
         transform.setOrigin(tf2::Vector3(pose(0), pose(1), pose(2)));
         transform.setRotation(tf2::Quaternion(q(1), q(2), q(3), q(0)));
@@ -405,16 +405,16 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         colvec q90 = R_to_quaternion(ypr_to_R(p90));
         transform90.setRotation(tf2::Quaternion(q90(1), q90(2), q90(3), q90(0)));
 
-        // 定义帧 ID
+        // Define frame ID
         std::string base_s = _drone_id == -1 ? "base" : "base" + std::to_string(_drone_id);
         std::string laser_s = _drone_id == -1 ? "laser" : "laser" + std::to_string(_drone_id);
         std::string vision_s = _drone_id == -1 ? "vision" : "vision" + std::to_string(_drone_id);
         std::string height_s = _drone_id == -1 ? "height" : "height" + std::to_string(_drone_id);
 
-        // 发布 world -> base_s
+        // Publish world -> base_s
         geometry_msgs::msg::TransformStamped transformStamped;
         transformStamped.header.stamp = msg->header.stamp; // 时间戳
-        transformStamped.header.frame_id = "world";        // 父坐标系
+        transformStamped.header.frame_id = "ego_world";        // 父坐标系
         transformStamped.child_frame_id = base_s;          // 子坐标系
         transformStamped.transform.translation.x = transform.getOrigin().x();
         transformStamped.transform.translation.y = transform.getOrigin().y();
@@ -425,7 +425,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         transformStamped.transform.rotation.w = transform.getRotation().w();
         broadcaster->sendTransform(transformStamped);
 
-        // 发布 base_s -> laser_s
+        // Publish base_s -> laser_s
         transformStamped.header.frame_id = base_s;
         transformStamped.child_frame_id = laser_s;
         transformStamped.transform.translation.x = transform45.getOrigin().x();
@@ -437,11 +437,11 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         transformStamped.transform.rotation.w = transform45.getRotation().w();
         broadcaster->sendTransform(transformStamped);
 
-        // 发布 base_s -> vision_s
+        // Publish base_s -> vision_s
         transformStamped.child_frame_id = vision_s;
         broadcaster->sendTransform(transformStamped);
 
-        // 发布 base_s -> height_s
+        // Publish base_s -> height_s
         transformStamped.child_frame_id = height_s;
         transformStamped.transform.translation.x = transform90.getOrigin().x();
         transformStamped.transform.translation.y = transform90.getOrigin().y();
@@ -514,7 +514,7 @@ int main(int argc, char **argv)
     node->declare_parameter("color/a", 1.0);
     node->declare_parameter("origin", false);
     node->declare_parameter("robot_scale", 2.0);
-    node->declare_parameter("frame_id", "world");
+    node->declare_parameter("frame_id", "ego_world");
 
     node->declare_parameter("cross_config", false);
     node->declare_parameter("tf45", false);
@@ -542,7 +542,7 @@ int main(int argc, char **argv)
     node->get_parameter("drone_id", _drone_id);
 
 
-    // 发布者和订阅者
+    // Publishers and subscribers
     auto sub_odom = node->create_subscription<nav_msgs::msg::Odometry>(
         "odom", 100, odom_callback);
     auto sub_cmd = node->create_subscription<quadrotor_msgs::msg::PositionCommand>(

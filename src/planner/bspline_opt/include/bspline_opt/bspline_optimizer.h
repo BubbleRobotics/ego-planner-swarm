@@ -202,7 +202,7 @@ namespace ego_planner
     void combineCostRebound(const double *x, double *grad, double &f_combine, const int n);
     void combineCostRefine(const double *x, double *grad, double &f_combine, const int n);
 
-    /* for benckmark evaluation only */
+    /* for benchmark evaluation only */
   public:
     typedef unique_ptr<BsplineOptimizer> Ptr;
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(mockamap)
 
-# 编译选项
+# Compile options
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
@@ -36,7 +36,7 @@ if(BUILD_TESTING)
 endif()
 
 
-# 包含目录
+# include directories
 include_directories(
   include/mockamap
   ${rclcpp_INCLUDE_DIRS}
@@ -46,16 +46,16 @@ include_directories(
 
 ament_export_include_directories(include)
 
-# 源文件
+# Source file
 file(GLOB ${PROJECT_NAME}_SRCS src/*.cpp)
 
-# 创建可执行文件
+# Create an executable file
 add_executable(${PROJECT_NAME}_node
   ${${PROJECT_NAME}_SRCS}
 )
 
 
-# 链接库
+# Link library
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
   pcl_ros
@@ -66,20 +66,20 @@ ament_target_dependencies(${PROJECT_NAME}_node
   Boost
 )
 
-# 安装可执行文件
+# Install executable file
 install(TARGETS ${PROJECT_NAME}_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# 安装 launch 文件
+#Install launch file
 install(
   DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
-# 安装config（存放rviz的config文件）
+# Install config (the config file containing rviz)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
-# 安装头文件
+#Install header files
 # install(DIRECTORY include/
 #   DESTINATION include/${PROJECT_NAME}
 # )

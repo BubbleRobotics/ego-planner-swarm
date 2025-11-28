@@ -2,7 +2,7 @@
 #include <fstream>
 #include <vector>
 
-// ROS2 依赖项
+// ROS2 dependencies
 #include "rclcpp/rclcpp.hpp"
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -17,26 +17,26 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "std_msgs/msg/bool.hpp"
 
-// TF 相关
+// TF related
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/convert.h"
 #include "tf2_ros/transform_broadcaster.h"
 
-// PCL 相关
+// PCL related
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-// OpenCV 和 Eigen 相关
+// OpenCV and Eigen related
 #include <Eigen/Eigen>
 #include "opencv2/highgui/highgui.hpp"
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
-// 自定义头文件
+// Custom header file
 #include "depth_render.cuh"
 #include "quadrotor_msgs/msg/position_command.hpp"
 using namespace cv;
@@ -113,7 +113,7 @@ void rcvOdometryCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
   _odom = *odom;
   Eigen::Matrix4d Pose_receive = Eigen::Matrix4d::Identity();
 
-  // 存储得到的姿态信息
+  // Store the obtained attitude information
   Eigen::Vector3d request_position;
   Eigen::Quaterniond request_pose;
   request_position.x() = odom->pose.pose.position.x;
@@ -131,7 +131,7 @@ void rcvOdometryCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
 
   Eigen::Matrix4d body_pose = Pose_receive;
 
-  // 转换到相机姿态
+  // Switch to camera pose
   cam2world = body_pose * cam02body;
   cam2world_quat = cam2world.block<3,3>(0,0);
 
@@ -141,7 +141,7 @@ void rcvOdometryCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
   last_pose_world(1) = odom->pose.pose.position.y;
   last_pose_world(2) = odom->pose.pose.position.z;
 
-  // 发布 tf 变换
+  // Publish tf transform
 //   static tf2_ros::TransformBroadcaster br;
 //   geometry_msgs::msg::TransformStamped transformStamped;
 
@@ -177,21 +177,21 @@ void pubCameraPose()
   pub_pose->publish(camera_pose);  
 }
 
-// 基于当前的传感器信息和无人机位置，渲染感知到的点云信息
+// Render the perceived point cloud information based on the current sensor information and the drone's position.
 void renderSensedPoints()
 { 
   //if(! has_global_map || ! has_odom) return;
-  // 检查地图的可用性
+  // Check map availability
   if( !has_global_map && !has_local_map) return;
   
-  // 检查姿态可用性
+  // Check attitude availability
   if( !has_odom ) return;
   render_currentpose();
   render_pcl_world();
 }
 
 vector<float> cloud_data;
-// 接收全局地图信息的回调
+// Callback to receive global map information
 void rcvGlobalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr pointcloud_map)
 {
   if (has_global_map)
@@ -223,7 +223,7 @@ void rcvGlobalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr 
   has_global_map = true;
 }
 
-// 局部地图信息的回调
+// Callback of local map information
 void rcvLocalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr pointcloud_map)
 {
   // Load local map
@@ -248,39 +248,39 @@ void rcvLocalPointCloudCallBack(const sensor_msgs::msg::PointCloud2::SharedPtr p
   has_local_map = true;
 }
 
-// 渲染世界坐标系下的点云
+// Rendering point clouds in world coordinate system
 void render_pcl_world()
 {
-    pcl::PointCloud<pcl::PointXYZ> localMap; // 存储当前帧的点云数据
+    pcl::PointCloud<pcl::PointXYZ> localMap; // Store the point cloud data of the current frame
     pcl::PointXYZ pt_in;
 
     Eigen::Vector4d pose_in_camera;
     Eigen::Vector4d pose_in_world;
     Eigen::Vector3d pose_pt;
 
-    // 从深度图中提取点
+    // Extract points from depth map
     for (int u = 0; u < width; u++) {
         for (int v = 0; v < height; v++) {
-            // 获取对应位置的深度
+            // Get the depth at the corresponding position
             float depth = depth_mat.at<float>(v, u);
             
             if (depth == 0.0)
                 continue;
 
-            // 转换到相机坐标系
+            // Transform to camera coordinate system
             pose_in_camera(0) = (u - cx) * depth / fx;
             pose_in_camera(1) = (v - cy) * depth / fy;
             pose_in_camera(2) = depth;
             pose_in_camera(3) = 1.0;
             
-            // 转换到世界坐标系
+            // Transform to world coordinate system
             pose_in_world = cam2world * pose_in_camera;
 
-            // 超出视野则筛掉
+            // Filter out if outside the field of view
             if ((pose_in_world.segment(0, 3) - last_pose_world).norm() > sensing_horizon)
                 continue;
 
-            // 提取三维坐标并添加到点云
+            // Extract 3D coordinates and add them to the point cloud
             pose_pt = pose_in_world.head(3);
             pt_in.x = pose_pt(0);
             pt_in.y = pose_pt(1);
@@ -290,48 +290,48 @@ void render_pcl_world()
         }
     }
 
-    // 设置map的属性
+    // Set map properties
     localMap.width = localMap.points.size();
     localMap.height = 1;
     localMap.is_dense = true;
 
-    // 信息格式转换
+    // Information format conversion
     sensor_msgs::msg::PointCloud2 local_map_pcl;
     pcl::toROSMsg(localMap, local_map_pcl);
     local_map_pcl.header.frame_id = "/map";
-    local_map_pcl.header.stamp = last_odom_stamp; // 使用当前时间戳
+    local_map_pcl.header.stamp = last_odom_stamp; // Use the current timestamp
 
-    // 发布点云
+    // Release point cloud
     pub_pcl_world->publish(local_map_pcl);
 }
 
-// 无需传递时间，直接使用 ROS2 时钟来获取当前时间
+// No need to transmit time, directly use the ROS2 clock to get the current time.
 void render_currentpose()
 {
   rclcpp::Clock clock;
-  double this_time = clock.now().seconds();  // 获取当前时间（秒）
+  double this_time = clock.now().seconds();  // Get the current time (seconds)
 
-  // 通过取逆获取从世界坐标系到相机坐标系的变换矩阵
+  // Obtain the transformation matrix from world coordinates to camera coordinates by inverting the values.
   Eigen::Matrix4d cam_pose = cam2world.inverse();
 
-  // 变换矩阵转换为数组
+  // Transformation matrix to array
   double pose[4 * 4];
   for (int i = 0; i < 4; i++)
     for (int j = 0; j < 4; j++)
       pose[j + 4 * i] = cam_pose(i, j);
 
-  // 渲染深度图像
+  // Render depth image
   depthrender.render_pose(pose, depth_hostptr);
 
-  // 初始化深度图
+  // Initialize depth map
   depth_mat = cv::Mat::zeros(height, width, CV_32FC1);
   double min = 0.5;
   double max = 1.0f;
 
-  // 填充深度图像矩阵
+  // Fill the depth image matrix
   for (int i = 0; i < height; i++) {
     for (int j = 0; j < width; j++) {
-      // 毫米转为米
+      // Millimeters to meters
       float depth = (float)depth_hostptr[i * width + j] / 1000.0f;
       depth = depth < 500.0f ? depth : 0;
       max = depth > max ? depth : max;
@@ -339,7 +339,7 @@ void render_currentpose()
     }
   }
 
-  // 发布深度图像信息
+  // Publish depth image information
   cv_bridge::CvImage out_msg;
   out_msg.header.stamp = last_odom_stamp;
   out_msg.header.frame_id = "camera";
@@ -347,13 +347,13 @@ void render_currentpose()
   out_msg.image = depth_mat.clone();
   pub_depth->publish(*out_msg.toImageMsg());
 
-  // 生成伪彩色图像
+  // Generate pseudo-color image
   cv::Mat adjMap;
   depth_mat.convertTo(adjMap, CV_8UC1, 255 / 13.0, -min);
   cv::Mat falseColorsMap;
   cv::applyColorMap(adjMap, falseColorsMap, cv::COLORMAP_RAINBOW);
 
-  // 发布伪彩色图像信息
+  // Publish pseudo-color image information
   cv_bridge::CvImage cv_image_colored;
   cv_image_colored.header.frame_id = "depthmap";
   cv_image_colored.header.stamp = last_odom_stamp;
