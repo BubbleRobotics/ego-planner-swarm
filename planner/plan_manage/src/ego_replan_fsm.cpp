@@ -59,11 +59,11 @@ namespace ego_planner
     planner_manager_->setDroneIdtoOpt();
 
     /* callback*/
-    exec_timer_ = node_->create_wall_timer(std::chrono::milliseconds(10),
-                                           std::bind(&EGOReplanFSM::execFSMCallback, this));
+    exec_timer_ = node_->create_timer(std::chrono::milliseconds(10),
+      std::bind(&EGOReplanFSM::execFSMCallback, this));
 
-    safety_timer_ = node_->create_wall_timer(std::chrono::milliseconds(50),
-                                             std::bind(&EGOReplanFSM::checkCollisionCallback, this));
+    safety_timer_ = node_->create_timer(std::chrono::milliseconds(50),
+      std::bind(&EGOReplanFSM::checkCollisionCallback, this));
 
     odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
         "odom_world",
@@ -248,6 +248,8 @@ namespace ego_planner
 
   void EGOReplanFSM::odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
   {
+    /* TODO NED 
+    If Odometry is given in ENU */
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
@@ -255,6 +257,15 @@ namespace ego_planner
     odom_vel_(0) = msg->twist.twist.linear.x;
     odom_vel_(1) = msg->twist.twist.linear.y;
     odom_vel_(2) = msg->twist.twist.linear.z;
+
+    /* Our Odometry is given in NED
+    odom_pos_(0) = msg->pose.pose.position.y;
+    odom_pos_(1) = msg->pose.pose.position.x;
+    odom_pos_(2) = -msg->pose.pose.position.z;
+
+    odom_vel_(0) = msg->twist.twist.linear.x;
+    odom_vel_(1) = msg->twist.twist.linear.y;
+    odom_vel_(2) = msg->twist.twist.linear.z;*/
 
     // odom_acc_ = estimateAcc( msg );
 
@@ -273,16 +284,17 @@ namespace ego_planner
       return;
 
     // if (abs((ros::Time::now() - msg->start_time).toSec()) > 0.25)
-    rclcpp::Clock clock(RCL_SYSTEM_TIME);  // Ensure the current node’s time source is used.
-    auto msg_time = rclcpp::Time(msg->start_time, clock.get_clock_type());
-    // RCLCPP_INFO(node_->get_logger(), "Clock type: %d", rclcpp::Clock().now().get_clock_type());
+    
+    rclcpp::Time msg_time(msg->start_time);  // default is RCL_ROS_TIME
+
+    // RCLCPP_INFO(node_->get_logger(), "Clock type: %d", node_->get_clock()->now().get_clock_type());
     // RCLCPP_INFO(node_->get_logger(), "Start time clock type: %d", rclcpp::Time(msg->start_time).get_clock_type());
     // RCLCPP_INFO(node_->get_logger(), "msg_time: %d", msg_time.get_clock_type());
-    if (abs((rclcpp::Clock().now() - msg_time).seconds()) > 0.25)
+    if (abs((node_->get_clock()->now() - msg_time).seconds()) > 0.25)
     {
       // ROS_ERROR("Time difference is too large! Local - Remote Agent %d = %fs", msg->drone_id, (ros::Time::now() - msg->start_time).toSec());
       RCLCPP_ERROR(node_->get_logger(), "Time difference is too large! Local - Remote Agent %d = %fs",
-                   msg->drone_id, (rclcpp::Clock().now() - msg_time).seconds());
+                   msg->drone_id, (node_->get_clock()->now() - msg_time).seconds());
       return;
     }
 
@@ -345,6 +357,7 @@ namespace ego_planner
 
     planner_manager_->swarm_trajs_buf_[id].start_time_ = msg->start_time;
 
+    cout << "Starting collision check" << endl;
     /* Check Collision */
     if (planner_manager_->checkCollision(id))
     {
@@ -565,7 +578,8 @@ namespace ego_planner
     {
       /* determine if need to replan */
       LocalTrajData *info = &planner_manager_->local_data_;
-      rclcpp::Time time_now = rclcpp::Clock().now();
+      rclcpp::Time time_now = node_->get_clock()->now();
+
       double t_cur = (time_now - info->start_time_).seconds();
       t_cur = std::min(info->duration_, t_cur);
 
@@ -626,7 +640,7 @@ namespace ego_planner
     }
     }
 
-    data_disp_.header.stamp = rclcpp::Clock().now();
+    data_disp_.header.stamp = node_->get_clock()->now();
     data_disp_pub_->publish(data_disp_);
 
   force_return:;
@@ -666,8 +680,9 @@ namespace ego_planner
     LocalTrajData *info = &planner_manager_->local_data_;
     // ros::Time time_now = ros::Time::now();
     
-    auto time_now = rclcpp::Clock().now();
+    auto time_now = node_->get_clock()->now();
     // double t_cur = (time_now - info->start_time_).toSec();
+
     double t_cur = (time_now - info->start_time_).seconds();
     start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
     start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
@@ -717,12 +732,13 @@ namespace ego_planner
     /* ---------- check trajectory ---------- */
     constexpr double time_step = 0.01;
     // double t_cur = (ros::Time::now() - info->start_time_).toSec();
-    double t_cur = (rclcpp::Clock().now() - info->start_time_).seconds();
+
+    double t_cur = (node_->get_clock()->now() - info->start_time_).seconds();
 
     Eigen::Vector3d p_cur = info->position_traj_.evaluateDeBoorT(t_cur);
     const double CLEARANCE = 1.0 * planner_manager_->getSwarmClearance();
     // double t_cur_global = ros::Time::now().toSec();
-    double t_cur_global = rclcpp::Clock().now().seconds();
+    double t_cur_global = node_->get_clock()->now().seconds();
 
     double t_2_3 = info->duration_ * 2 / 3;
     for (double t = t_cur; t < info->duration_; t += time_step)
@@ -791,13 +807,13 @@ namespace ego_planner
 
     if (info->duration_ > 1e-3)  // make sure we actually have a previous traj
     {
-      double t_cur = (rclcpp::Clock().now() - info->start_time_).seconds();
+      double t_cur = (node_->get_clock()->now() - info->start_time_).seconds();
       t_cur = std::max(0.0, std::min(t_cur, info->duration_));
 
       Eigen::Vector3d planned_pos = info->position_traj_.evaluateDeBoorT(t_cur);
       double tracking_error = (planned_pos - odom_pos_).norm();
 
-      if (tracking_error > 1.0)  // TODO tune this threshold
+      if (tracking_error > 0.4)  // TODO tune this threshold
       {
         RCLCPP_WARN(
             node_->get_logger(),

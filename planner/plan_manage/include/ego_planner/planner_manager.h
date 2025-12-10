@@ -70,7 +70,8 @@ namespace ego_planner
                         double &time_inc);
 
     bool refineTrajAlgo(UniformBspline &traj, vector<Eigen::Vector3d> &start_end_derivative, double ratio, double &ts, Eigen::MatrixXd &optimal_control_points);
-
+    rclcpp::Node::SharedPtr node_;
+    
     // !SECTION stable
 
     // SECTION developing

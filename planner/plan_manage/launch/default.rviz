@@ -335,7 +335,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
-    Fixed Frame: ego_world
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:

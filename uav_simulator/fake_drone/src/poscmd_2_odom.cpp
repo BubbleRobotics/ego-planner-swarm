@@ -10,7 +10,7 @@
 
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr _odom_pub;
 rclcpp::Subscription<quadrotor_msgs::msg::PositionCommand>::SharedPtr _cmd_sub;
-
+rclcpp::Node::SharedPtr node_;
 quadrotor_msgs::msg::PositionCommand _cmd;
 double init_x, init_y, init_z;
 
@@ -27,8 +27,8 @@ void rcvPosCmdCallBack(const quadrotor_msgs::msg::PositionCommand cmd)
 void pubOdom()
 {
     auto odom = nav_msgs::msg::Odometry();
-    odom.header.stamp = rclcpp::Clock().now();
-    odom.header.frame_id = "ego_world";
+    odom.header.stamp = node_->get_clock()->now();
+    odom.header.frame_id = "map";
 
     if (rcv_cmd)
     {
@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
     // Initialize ROS nodes
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("odom_generator");
-
+    node_ = node;
     // Read parameters
     node->declare_parameter("init_x", 0.0);
     node->declare_parameter("init_y", 0.0);

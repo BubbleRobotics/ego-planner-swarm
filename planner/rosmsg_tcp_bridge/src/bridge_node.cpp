@@ -32,6 +32,8 @@ rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr other_odoms_pub_;
 rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr emergency_stop_pub_;
 rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr one_traj_pub_;
 
+rclcpp::Node::SharedPtr node_;
+
 string tcp_ip_, udp_ip_;
 int drone_id_;
 double odom_broadcast_freq_;
@@ -630,7 +632,7 @@ void odom_sub_udp_cb(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
 {
 
   static rclcpp::Time t_last;
-  rclcpp::Time t_now = rclcpp::Clock().now();
+  rclcpp::Time t_now = node_->get_clock()->now();
   if ((t_now - t_last).seconds() * odom_broadcast_freq_ < 1.0)
   {
     return;
@@ -790,7 +792,7 @@ int main(int argc, char *argv[])
   // Initialize ROS nodes
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("rosmsg_tcp_bridge");
-
+  node_ = node;
   // Read parameters
   node->declare_parameter("next_drone_ip", string("127.0.0.1"));
   node->declare_parameter("broadcast_ip", string("127.0.0.255"));

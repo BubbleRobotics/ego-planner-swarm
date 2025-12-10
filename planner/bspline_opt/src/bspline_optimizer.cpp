@@ -7,30 +7,30 @@ namespace ego_planner
 
   void BsplineOptimizer::setParam(rclcpp::Node::SharedPtr node)
   {
+    node_ = node;
+    node_->declare_parameter("optimization/lambda_smooth", -1.0);
+    node_->declare_parameter("optimization/lambda_collision", -1.0);
+    node_->declare_parameter("optimization/lambda_feasibility", -1.0);
+    node_->declare_parameter("optimization/lambda_fitness", -1.0);
 
-    node->declare_parameter("optimization/lambda_smooth", -1.0);
-    node->declare_parameter("optimization/lambda_collision", -1.0);
-    node->declare_parameter("optimization/lambda_feasibility", -1.0);
-    node->declare_parameter("optimization/lambda_fitness", -1.0);
+    node_->declare_parameter("optimization/dist0", -1.0);
+    node_->declare_parameter("optimization/swarm_clearance", -1.0);
+    node_->declare_parameter("optimization/max_vel", -1.0);
+    node_->declare_parameter("optimization/max_acc", -1.0);
 
-    node->declare_parameter("optimization/dist0", -1.0);
-    node->declare_parameter("optimization/swarm_clearance", -1.0);
-    node->declare_parameter("optimization/max_vel", -1.0);
-    node->declare_parameter("optimization/max_acc", -1.0);
+    node_->declare_parameter("optimization/order", 3);
 
-    node->declare_parameter("optimization/order", 3);
+    node_->get_parameter("optimization/lambda_smooth", lambda1_);
+    node_->get_parameter("optimization/lambda_collision", lambda2_);
+    node_->get_parameter("optimization/lambda_feasibility", lambda3_);
+    node_->get_parameter("optimization/lambda_fitness", lambda4_);
 
-    node->get_parameter("optimization/lambda_smooth", lambda1_);
-    node->get_parameter("optimization/lambda_collision", lambda2_);
-    node->get_parameter("optimization/lambda_feasibility", lambda3_);
-    node->get_parameter("optimization/lambda_fitness", lambda4_);
+    node_->get_parameter("optimization/dist0", dist0_);
+    node_->get_parameter("optimization/swarm_clearance", swarm_clearance_);
+    node_->get_parameter("optimization/max_vel", max_vel_);
+    node_->get_parameter("optimization/max_acc", max_acc_);
 
-    node->get_parameter("optimization/dist0", dist0_);
-    node->get_parameter("optimization/swarm_clearance", swarm_clearance_);
-    node->get_parameter("optimization/max_vel", max_vel_);
-    node->get_parameter("optimization/max_acc", max_acc_);
-
-    node->get_parameter("optimization/order", order_);
+    node_->get_parameter("optimization/order", order_);
   }
 
   void BsplineOptimizer::setEnvironment(const GridMap::Ptr &map)
@@ -797,7 +797,7 @@ namespace ego_planner
     cost = 0.0;
     int end_idx = q.cols() - order_ - (double)(q.cols() - 2 * order_) * 1.0 / 3.0; // Only check the first 2/3 points
     const double CLEARANCE = swarm_clearance_ * 2;
-    double t_now = rclcpp::Clock().now().seconds();
+    double t_now = node_->get_clock()->now().seconds();
     constexpr double a = 2.0, b = 1.0, inv_a2 = 1 / a / a, inv_b2 = 1 / b / b;
 
     for (int i = order_; i < end_idx; i++)
@@ -850,7 +850,7 @@ namespace ego_planner
     cost = 0.0;
     int end_idx = q.cols() - order_;
     constexpr double CLEARANCE = 1.5;
-    double t_now = rclcpp::Clock().now().seconds();
+    double t_now = node_->get_clock()->now().seconds();
 
     for (int i = order_; i < end_idx; i++)
     {
@@ -1261,9 +1261,9 @@ namespace ego_planner
           {
             Eigen::Vector3d p = cps_.points.col(t);
             bool occ_here = grid_map_->getInflateOccupancy(p);
-            RCLCPP_ERROR(rclcpp::get_logger("check_collision_and_rebound"),
+            /*RCLCPP_ERROR(rclcpp::get_logger("check_collision_and_rebound"),
                         "CP %d: (%.2f, %.2f, %.2f) occ=%d",
-                        t, p.x(), p.y(), p.z(), (int)occ_here);
+                        t, p.x(), p.y(), p.z(), (int)occ_here);*/
           }
 
           in_id = 0;
@@ -1473,7 +1473,7 @@ namespace ego_planner
     // Number of optimization variables
     variable_num_ = 3 * (end_id - start_id);
 
-    rclcpp::Time t0 = rclcpp::Clock().now(), t1, t2;
+    rclcpp::Time t0 = node_->get_clock()->now(), t1, t2;
     int restart_nums = 0, rebound_times = 0;
     bool flag_force_return, flag_occ, success;
     new_lambda2_ = lambda2_;
@@ -1500,10 +1500,10 @@ namespace ego_planner
       lbfgs_params.g_epsilon = 0.01;
 
       /* ---------- optimize ---------- */
-      t1 = rclcpp::Clock().now();
+      t1 = node_->get_clock()->now();
       // Run optimization
       int result = lbfgs::lbfgs_optimize(variable_num_, q, &final_cost, BsplineOptimizer::costFunctionRebound, NULL, BsplineOptimizer::earlyExit, this, &lbfgs_params);
-      t2 = rclcpp::Clock().now();
+      t2 = node_->get_clock()->now();
       double time_ms = (t2 - t1).seconds() * 1000;
       double total_time_ms = (t2 - t0).seconds() * 1000;
 

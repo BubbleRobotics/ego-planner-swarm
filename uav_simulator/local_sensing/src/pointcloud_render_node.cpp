@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
 
   // Timer: Controls rendering frequency
   double sensing_duration = 1.0 / sensing_rate * 2.5;
-  local_sensing_timer = node->create_wall_timer(
+  local_sensing_timer = node->create_timer(
       std::chrono::duration<double>(sensing_duration), std::bind(&renderSensedPoints));
 
   _inv_resolution = 1.0 / _resolution;

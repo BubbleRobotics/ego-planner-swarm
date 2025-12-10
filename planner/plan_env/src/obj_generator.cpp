@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     pose_pubs.push_back(pose_pub);
   }
 
-  auto update_timer = node->create_wall_timer(
+  auto update_timer = node->create_timer(
       std::chrono::duration<double>(1 / 30.0), updateCallback);
   cout << "[dynamic]: initialize with " + to_string(obj_num) << " moving obj." << endl;
   rclcpp::sleep_for(std::chrono::seconds(1));
@@ -229,7 +229,7 @@ void visualizeObj(int id)
 
   /* ---------- rviz ---------- */
   visualization_msgs::msg::Marker mk;
-  mk.header.frame_id = "ego_world";
+  mk.header.frame_id = "map";
   mk.header.stamp = rclcpp::Clock().now();
   mk.type = visualization_msgs::msg::Marker::CUBE;
   mk.action = visualization_msgs::msg::Marker::ADD;
@@ -249,7 +249,7 @@ void visualizeObj(int id)
 
   /* ---------- pose ---------- */
   geometry_msgs::msg::PoseStamped pose;
-  pose.header.frame_id = "ego_world";
+  pose.header.frame_id = "map";
   // pose.header.seq = id;
   pose.pose.position.x = pos(0), pose.pose.position.y = pos(1), pose.pose.position.z = pos(2);
   pose.pose.orientation.w = 1.0;

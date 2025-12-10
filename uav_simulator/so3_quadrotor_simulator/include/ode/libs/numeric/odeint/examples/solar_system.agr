@@ -209,8 +209,8 @@
 @g0 fixedpoint format general general
 @g0 fixedpoint prec 6, 6
 @with g0
-@    ego_world -32, -32, 45, 46
-@    stack ego_world 0, 0, 0, 0
+@    map -32, -32, 45, 46
+@    stack map 0, 0, 0, 0
 @    znorm 1
 @    view 0.150000, 0.150000, 1.150000, 0.850000
 @    title ""

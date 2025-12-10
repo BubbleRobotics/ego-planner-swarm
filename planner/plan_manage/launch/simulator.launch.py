@@ -13,6 +13,7 @@ from launch.substitutions import PythonExpression
 
 def generate_launch_description():
     # LaunchConfigurations
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     init_x = LaunchConfiguration('init_x_', default=0.0)
     init_y = LaunchConfiguration('init_y_', default=0.0)
     init_z = LaunchConfiguration('init_z_', default=0.0)
@@ -27,6 +28,7 @@ def generate_launch_description():
     drone_id = LaunchConfiguration('drone_id', default=0)
 
     # DeclareLaunchArguments
+    use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value=use_sim_time, description='Use Simulation Time')
     init_x_arg = DeclareLaunchArgument('init_x_', default_value=init_x, description='Initial X position')
     init_y_arg = DeclareLaunchArgument('init_y_', default_value=init_y, description='Initial Y position')
     init_z_arg = DeclareLaunchArgument('init_z_', default_value=init_z, description='Initial Z position')
@@ -58,6 +60,7 @@ def generate_launch_description():
             ('odometry', odometry_topic)
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'map/x_size': map_size_x_},
             {'map/y_size': map_size_y_},
             {'map/z_size': map_size_z_},
@@ -74,7 +77,7 @@ def generate_launch_description():
             {'ObstacleShape/z_l': 0.7},
             {'ObstacleShape/z_h': 0.8},
             {'ObstacleShape/theta': 0.5},
-            {'sensing/radius': 5.0},
+            {'sensing/radius': 10.0},
             {'sensing/rate': 10.0},
             {'min_distance': min_dist}
         ],
@@ -90,6 +93,7 @@ def generate_launch_description():
             ('/mock_map', '/map_generator/global_cloud')
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'seed': 127},
             {'update_freq': 0.5},
             {'resolution': 0.1},
@@ -109,7 +113,8 @@ def generate_launch_description():
     so3_quadrotor_simulator = launch_ros.actions.Node(
         package='so3_quadrotor_simulator', executable='so3_quadrotor_simulator',
         output='screen', name=['drone_', drone_id, '_quadrotor_simulator_so3'], 
-        parameters=[{'rate/odom': 100.0},
+        parameters=[{'use_sim_time': use_sim_time},
+                    {'rate/odom': 100.0},
                     {'simulator/init_state_x': init_x},
                     {'simulator/init_state_y': init_y},
                     {'simulator/init_state_z': init_z}],
@@ -137,6 +142,7 @@ def generate_launch_description():
             plugin='SO3ControlComponent',
             name=['drone_', drone_id, '_so3_control_component'],
             parameters=[
+                {'use_sim_time': use_sim_time},
                 {'so3_control/init_state_x': init_x},
                 {'so3_control/init_state_y': init_y},
                 {'so3_control/init_state_z': init_z},
@@ -174,6 +180,7 @@ def generate_launch_description():
         name=['drone_', drone_id, '_poscmd_2_odom'],
         output='screen',
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'init_x': init_x},
             {'init_y': init_y},
             {'init_z': init_z}
@@ -204,6 +211,7 @@ def generate_launch_description():
             # ('height', ['drone_', drone_id, '_vis/height']),
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'color/a': 1.0},
             {'color/r': 0.0},
             {'color/g': 0.0},
@@ -227,6 +235,7 @@ def generate_launch_description():
         name=['drone_', drone_id, '_pcl_render_node'],
         output='screen',
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'sensing_horizon': 3.0},
             {'sensing_rate': 30.0},
             {'estimation_rate': 30.0},
@@ -247,6 +256,7 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # Add LaunchArguments
+    ld.add_action(use_sim_time_arg)
     ld.add_action(init_x_arg)
     ld.add_action(init_y_arg)
     ld.add_action(init_z_arg)

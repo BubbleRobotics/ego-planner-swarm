@@ -12,23 +12,25 @@ namespace ego_planner
 
   void EGOPlannerManager::initPlanModules(rclcpp::Node::SharedPtr &node, PlanningVisualization::Ptr vis)
   {
-    node->declare_parameter("manager/max_vel", -1.0);
-    node->declare_parameter("manager/max_acc", -1.0);
-    node->declare_parameter("manager/max_jerk", -1.0);
-    node->declare_parameter("manager/feasibility_tolerance", 0.0);
-    node->declare_parameter("manager/control_points_distance", -1.0);
-    node->declare_parameter("manager/planning_horizon", 5.0);
-    node->declare_parameter("manager/use_distinctive_trajs", false);
-    node->declare_parameter("manager/drone_id", -1);
+    node_ = node;
 
-    node->get_parameter("manager/max_vel", pp_.max_vel_);
-    node->get_parameter("manager/max_acc", pp_.max_acc_);
-    node->get_parameter("manager/max_jerk", pp_.max_jerk_);
-    node->get_parameter("manager/feasibility_tolerance", pp_.feasibility_tolerance_);
-    node->get_parameter("manager/control_points_distance", pp_.ctrl_pt_dist);
-    node->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
-    node->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
-    node->get_parameter("manager/drone_id", pp_.drone_id);
+    node_->declare_parameter("manager/max_vel", -1.0);
+    node_->declare_parameter("manager/max_acc", -1.0);
+    node_->declare_parameter("manager/max_jerk", -1.0);
+    node_->declare_parameter("manager/feasibility_tolerance", 0.0);
+    node_->declare_parameter("manager/control_points_distance", -1.0);
+    node_->declare_parameter("manager/planning_horizon", 5.0);
+    node_->declare_parameter("manager/use_distinctive_trajs", false);
+    node_->declare_parameter("manager/drone_id", -1);
+
+    node_->get_parameter("manager/max_vel", pp_.max_vel_);
+    node_->get_parameter("manager/max_acc", pp_.max_acc_);
+    node_->get_parameter("manager/max_jerk", pp_.max_jerk_);
+    node_->get_parameter("manager/feasibility_tolerance", pp_.feasibility_tolerance_);
+    node_->get_parameter("manager/control_points_distance", pp_.ctrl_pt_dist);
+    node_->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
+    node_->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
+    node_->get_parameter("manager/drone_id", pp_.drone_id);
 
     local_data_.traj_id_ = 0;
     grid_map_.reset(new GridMap);
@@ -52,7 +54,7 @@ namespace ego_planner
     static int count = 0;
     printf("\033[47;30m\n[drone %d replan %d]==============================================\033[0m\n", pp_.drone_id, count++);
 
-    if ((start_pt - local_target_pt).norm() < 0.2)
+    if ((start_pt - local_target_pt).norm() < 0.05)
     {
       cout << "Close to goal" << endl;
       continous_failures_count_++;
@@ -144,7 +146,7 @@ namespace ego_planner
       {
         std::cout << "From Previous polynomial trajectory." << std::endl;
         double t;
-        double t_cur = (rclcpp::Clock().now() - local_data_.start_time_).seconds();
+        double t_cur = (node_->get_clock()->now() - local_data_.start_time_).seconds();
 
         vector<double> pseudo_arc_length;
         vector<Eigen::Vector3d> segment_point;
@@ -331,9 +333,9 @@ namespace ego_planner
 
     // t_refine = ros::Time::now() - t_start;
     t_refine = rclcpp::Clock().now() - t_start;
-
+    
     // save planned results
-    updateTrajInfo(pos, rclcpp::Clock().now());
+    updateTrajInfo(pos, node_->get_clock()->now());
 
     static double sum_time = 0;
     static int count_success = 0;
@@ -341,7 +343,7 @@ namespace ego_planner
     sum_time += (t_init + t_opt + t_refine).seconds();
 
     count_success++;
-
+    
     // cout << "total time:\033[42m" << (t_init + t_opt + t_refine).toSec() << "\033[0m,optimize:" << (t_init + t_opt).toSec() << ",refine:" << t_refine.toSec() << ",avg_time=" << sum_time / count_success << endl;
     cout << "total time:\033[42m" << (t_init + t_opt + t_refine).seconds() << "\033[0m,optimize:" << (t_init + t_opt).seconds() << ",refine:" << t_refine.seconds() << ",avg_time=" << sum_time / count_success << endl;
 
@@ -358,7 +360,7 @@ namespace ego_planner
       control_points.col(i) = stop_pos;
     }
 
-    updateTrajInfo(UniformBspline(control_points, 3, 1.0), rclcpp::Clock().now());
+    updateTrajInfo(UniformBspline(control_points, 3, 1.0), node_->get_clock()->now());
 
     return true;
   }
@@ -367,6 +369,7 @@ namespace ego_planner
   {
     // if (local_data_.start_time_.toSec() < 1e9) // It means my first planning has not started
     if (local_data_.start_time_.seconds() < 1e9)
+      cout << "If we are here, that is very bad!" << endl;
       return false;
 
     // double my_traj_start_time = local_data_.start_time_.toSec();
@@ -376,7 +379,7 @@ namespace ego_planner
 
     double t_start = max(my_traj_start_time, other_traj_start_time);
     double t_end = min(my_traj_start_time + local_data_.duration_ * 2 / 3, other_traj_start_time + swarm_trajs_buf_[drone_id].duration_);
-
+    cout << "Start time:" << t_start << "End time:" << t_end << endl;
     for (double t = t_start; t < t_end; t += 0.03)
     {
       if ((local_data_.position_traj_.evaluateDeBoorT(t - my_traj_start_time) - swarm_trajs_buf_[drone_id].position_traj_.evaluateDeBoorT(t - other_traj_start_time)).norm() < bspline_optimizer_->getSwarmClearance())
@@ -456,7 +459,7 @@ namespace ego_planner
     else
       return false;
 
-    auto time_now = rclcpp::Clock().now();
+    auto time_now = node_->get_clock()->now();
 
     global_data_.setGlobalTraj(gl_traj, time_now);
 
@@ -525,7 +528,7 @@ namespace ego_planner
     else
       return false;
 
-    auto time_now = rclcpp::Clock().now();
+    auto time_now = node_->get_clock()->now();
 
     global_data_.setGlobalTraj(gl_traj, time_now);
 

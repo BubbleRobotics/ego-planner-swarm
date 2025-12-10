@@ -11,8 +11,8 @@ namespace ego_planner
                                                 Eigen::Vector4d color, int id, bool show_sphere /* = true */)
   {
     visualization_msgs::msg::Marker sphere, line_strip;
-    sphere.header.frame_id = line_strip.header.frame_id = "ego_world";
-    sphere.header.stamp = line_strip.header.stamp = rclcpp::Clock().now();
+    sphere.header.frame_id = line_strip.header.frame_id = "map";
+    sphere.header.stamp = line_strip.header.stamp = node_->get_clock()->now();
     sphere.type = visualization_msgs::msg::Marker::SPHERE_LIST;
     line_strip.type = visualization_msgs::msg::Marker::LINE_STRIP;
     sphere.action = line_strip.action = visualization_msgs::msg::Marker::ADD;
@@ -47,7 +47,7 @@ namespace ego_planner
   {
     visualization_msgs::msg::Marker sphere, line_strip;
     sphere.header.frame_id = line_strip.header.frame_id = "map";
-    sphere.header.stamp = line_strip.header.stamp = rclcpp::Clock().now();
+    sphere.header.stamp = line_strip.header.stamp = node_->get_clock()->now();
     sphere.type = visualization_msgs::msg::Marker::SPHERE_LIST;
     line_strip.type = visualization_msgs::msg::Marker::LINE_STRIP;
     sphere.action = line_strip.action = visualization_msgs::msg::Marker::ADD;
@@ -82,7 +82,7 @@ namespace ego_planner
   {
     visualization_msgs::msg::Marker arrow;
     arrow.header.frame_id = "map";
-    arrow.header.stamp = rclcpp::Clock().now();
+    arrow.header.stamp = node_->get_clock()->now();
     arrow.type = visualization_msgs::msg::Marker::ARROW;
     arrow.action = visualization_msgs::msg::Marker::ADD;
 
@@ -122,8 +122,8 @@ namespace ego_planner
   void PlanningVisualization::displayGoalPoint(Eigen::Vector3d goal_point, Eigen::Vector4d color, const double scale, int id)
   {
     visualization_msgs::msg::Marker sphere;
-    sphere.header.frame_id = "ego_world";
-    sphere.header.stamp = rclcpp::Clock().now();
+    sphere.header.frame_id = "map";
+    sphere.header.stamp = node_->get_clock()->now();
     sphere.type = visualization_msgs::msg::Marker::SPHERE;
     sphere.action = visualization_msgs::msg::Marker::ADD;
     sphere.id = id;

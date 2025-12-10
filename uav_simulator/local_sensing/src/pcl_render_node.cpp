@@ -425,16 +425,16 @@ int main(int argc, char **argv) {
   pub_color = node->create_publisher<sensor_msgs::msg::Image>("colordepth", 1000);
   pub_pose = node->create_publisher<geometry_msgs::msg::PoseStamped>("camera_pose", 1000);
   // pub_pcl_world = node->create_publisher<sensor_msgs::msg::PointCloud2>("rendered_pcl", 1);
-  pub_pcl_world = node->create_publisher<sensor_msgs::msg::PointCloud2>("pcl_render_node/cloud", 1);
+  pub_pcl_world = node->create_publisher<sensor_msgs::msg::PointCloud2>("pcl_render_node/cloud_old", 1);
 
   // Set up timers for sensing and estimation
   double sensing_duration = 1.0 / sensing_rate;
   double estimate_duration = 1.0 / estimation_rate;
 
-  auto local_sensing_timer = node->create_wall_timer(
+  auto local_sensing_timer = node->create_timer(
     std::chrono::duration<double>(sensing_duration), std::bind(&renderSensedPoints));
   
-  auto estimation_timer = node->create_wall_timer(
+  auto estimation_timer = node->create_timer(
     std::chrono::duration<double>(estimate_duration), std::bind(&pubCameraPose));
 
   _inv_resolution = 1.0 / _resolution;

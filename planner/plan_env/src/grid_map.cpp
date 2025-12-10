@@ -41,7 +41,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->declare_parameter("grid_map/virtual_ceil_yn", -0.1);
   node_->declare_parameter("grid_map/show_occ_time", false);
   node_->declare_parameter("grid_map/pose_type", 1);
-  node_->declare_parameter("grid_map/frame_id", "ego_world");
+  node_->declare_parameter("grid_map/frame_id", "map");
   node_->declare_parameter("grid_map/local_map_margin", 1);
   node_->declare_parameter("grid_map/ground_height", -13.0);
   node_->declare_parameter("grid_map/odom_depth_timeout", 1.0);
@@ -172,13 +172,14 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
       "grid_map/odom", 10, std::bind(&GridMap::odomCallback, this, std::placeholders::_1));
 
   // 定时器
-  occ_timer_ = node_->create_wall_timer(
+  occ_timer_ = node_->create_timer(
       std::chrono::duration<double>(0.05),
       std::bind(&GridMap::updateOccupancyCallback, this));
 
-  vis_timer_ = node_->create_wall_timer(
+  vis_timer_ = node_->create_timer(
       std::chrono::duration<double>(0.11),
       std::bind(&GridMap::visCallback, this));
+
 
   // 发布者
   map_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("grid_map/occupancy", 10);
@@ -795,10 +796,18 @@ void GridMap::odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
 {
   if (md_.has_first_depth_)
     return;
+  /* TODO NED 
+  If odometry is given in ENU */
   md_.camera_pos_(0) = odom->pose.pose.position.x;
   md_.camera_pos_(1) = odom->pose.pose.position.y;
   md_.camera_pos_(2) = odom->pose.pose.position.z;
   md_.has_odom_ = true;
+
+  /*/ We have odometry in NED
+  md_.camera_pos_(0) = odom->pose.pose.position.y;
+  md_.camera_pos_(1) = odom->pose.pose.position.x;
+  md_.camera_pos_(2) = -odom->pose.pose.position.z;
+  md_.has_odom_ = true;*/
   
 }
 

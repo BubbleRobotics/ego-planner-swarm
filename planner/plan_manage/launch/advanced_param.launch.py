@@ -6,6 +6,8 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # LaunchConfigurations
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+
     map_size_x = LaunchConfiguration('map_size_x_', default=42.0)
     map_size_y = LaunchConfiguration('map_size_y_', default=30.0)
     map_size_z = LaunchConfiguration('map_size_z_', default=13.0)
@@ -50,6 +52,8 @@ def generate_launch_description():
     drone_id = LaunchConfiguration('drone_id', default=0)
 
     # DeclareLaunchArguments
+    use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value=use_sim_time, description='Use simulation time')
+
     map_size_x_arg = DeclareLaunchArgument('map_size_x_', default_value=map_size_x, description='Map size along X')
     map_size_y_arg = DeclareLaunchArgument('map_size_y_', default_value=map_size_y, description='Map size along Y')
     map_size_z_arg = DeclareLaunchArgument('map_size_z_', default_value=map_size_z, description='Map size along Z')
@@ -94,7 +98,7 @@ def generate_launch_description():
         name=['drone_', drone_id, '_ego_planner_node'],
         output='screen',
         remappings=[
-            ('odom_world', ['model/bluerov2/', odometry_topic]),
+            ('odom_world', ['model/bluerov2/odometry']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2/odometry']
             ('planning/bspline', ['drone_', drone_id, '_planning/bspline']),
             ('planning/data_display', ['drone_', drone_id, '_planning/data_display']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
@@ -106,16 +110,17 @@ def generate_launch_description():
             ('optimal_list', ['drone_', drone_id, '_plan_vis/optimal_list']),
             ('a_star_list', ['drone_', drone_id, '_plan_vis/a_star_list']),
             
-            ('grid_map/odom', ['model/bluerov2/', odometry_topic]),
-            ('grid_map/cloud', ['drone_', drone_id, '_', cloud_topic]),
+            ('grid_map/odom', ['model/bluerov2/odometry']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
+            ('grid_map/cloud', ['/camera_d455/depth/image_raw/points_map']), # TODO change remapping OLD: ['drone_', drone_id, '_', cloud_topic]
             ('grid_map/pose', ['drone_', drone_id, '_', camera_pose_topic]),
             ('grid_map/depth', ['drone_', drone_id, '_', depth_topic]),
             ('grid_map/occupancy_inflate', ['drone_', drone_id, '_grid/grid_map/occupancy_inflate'])
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'fsm/flight_type': flight_type},
             {'fsm/thresh_replan_time': 1.0},
-            {'fsm/thresh_no_replan_meter': 1.0},
+            {'fsm/thresh_no_replan_meter': 0.2},
             {'fsm/planning_horizon': planning_horizon},
             {'fsm/planning_horizen_time': 3.0},
             {'fsm/emergency_time': 1.0},
@@ -145,8 +150,8 @@ def generate_launch_description():
             {'grid_map/map_size_z': map_size_z},
             {'grid_map/local_update_range_x': 5.5},
             {'grid_map/local_update_range_y': 5.5},
-            {'grid_map/local_update_range_z': 4.5},
-            {'grid_map/obstacles_inflation': 0.5},
+            {'grid_map/local_update_range_z': 5.5},
+            {'grid_map/obstacles_inflation': 0.4},
             {'grid_map/local_map_margin': 10},
             {'grid_map/ground_height': -13.0},
             # camera parameter
@@ -175,7 +180,7 @@ def generate_launch_description():
             {'grid_map/visualization_truncate_height': 1.8},
             {'grid_map/show_occ_time': False},
             {'grid_map/pose_type': 1},
-            {'grid_map/frame_id': "ego_world"},
+            {'grid_map/frame_id': "map"},
             # planner manager
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},
@@ -211,6 +216,8 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     # Add LaunchArguments
+    ld.add_action(use_sim_time_arg)
+
     ld.add_action(map_size_x_arg)
     ld.add_action(map_size_y_arg)
     ld.add_action(map_size_z_arg)

@@ -11,6 +11,7 @@
 #include <math.h>
 #include <iostream>
 #include <Eigen/Eigen>
+#include <Eigen/Geometry>
 #include <random>
 
 #include "rclcpp/rclcpp.hpp"
@@ -219,6 +220,125 @@ void CreateBasicCubeMap()
 }
 
 
+// Generate Pilot obstcale pointcloud
+void CreatePilotMap()
+{
+    cloudMap.clear();
+    cloudMap.points.clear();
+    pcl::PointXYZ pt;
+
+    // ----------------------------------------------
+    // SETTINGS
+    // ----------------------------------------------
+    double step = _resolution > 0.0 ? _resolution : 0.4;
+    step = std::max(step, 0.05);
+
+    // Cylinder approximation for each inspection element
+    double element_radius = 0.25;
+    double element_height = 1.0;
+
+    // ----------------------------------------------
+    // 1) FRONT WALL BOX (from your SDF)
+    // ----------------------------------------------
+    Eigen::Vector3d wall_size(50.0, 3.0, 16.0);
+    Eigen::Vector3d wall_center(10.722990, 3.746699, -5.0);
+
+    // Rotation around Z only (your SDF angle = -1.844678)
+    double yaw = -1.844678;
+    Eigen::Matrix3d R =
+      Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+
+    for(double x = -wall_size.x() / 2; x <= wall_size.x() / 2; x += step)
+    {
+        for(double y = -wall_size.y() / 2; y <= wall_size.y() / 2; y += step)
+        {
+            for(double z = -wall_size.z() / 2; z <= wall_size.z() / 2; z += step)
+            {
+                Eigen::Vector3d local(x, y, z);
+                Eigen::Vector3d world = R * local + wall_center;
+
+                pt.x = world.x();
+                pt.y = world.y();
+                pt.z = world.z();
+                cloudMap.points.push_back(pt);
+            }
+        }
+    }
+
+    // ----------------------------------------------
+    // 2) INSPECTION ELEMENTS
+    // extracted from your SDF file
+    // ----------------------------------------------
+
+    struct Elem { double x,y,z,yaw; };
+
+    std::vector<Elem> elements = {
+        {11.835702,13.253233,-5.000025, 2.867711},
+        {11.835702,13.253233,-9.000000, 2.867711},
+        {11.319732,11.416660,-5.000025, 2.867711},
+        {11.319732,11.416660,-9.000000, 2.867711},
+        {10.803728, 9.579964,-5.000025, 2.867711},
+        {10.803728, 9.579964,-9.000000, 2.867711},
+        {10.190416, 7.396905,-5.000025, 2.867711},
+        {10.190416, 7.396905,-9.000000, 2.867711},
+        { 9.674411, 5.560207,-5.000025, 2.867711},
+        { 9.674411, 5.560207,-9.000000, 2.867711},
+        { 8.883419, 2.744705,-5.000025, 2.867711},
+        { 8.883419, 2.744705,-9.000000, 2.867711},
+        { 8.367420, 0.908029,-5.000025, 2.867711},
+        { 8.367420, 0.908029,-9.000000, 2.867711},
+        { 7.754102,-1.275052,-5.000025, 2.867711},
+        { 7.754102,-1.275052,-9.000000, 2.867711}
+    };
+
+    // Generate cylinder-like pointcloud for each element
+    for(const auto &e : elements)
+    {
+        Eigen::Matrix3d Rz =
+          Eigen::AngleAxisd(e.yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+        Eigen::Vector3d base(e.x, e.y, e.z);
+
+        for(double dx=-element_radius; dx <= element_radius; dx+=step)
+        {
+            for(double dy=-element_radius; dy <= element_radius; dy+=step)
+            {
+                if(dx*dx + dy*dy > element_radius*element_radius)
+                    continue;
+
+                for(double dz=0; dz <= element_height; dz+=step)
+                {
+                    Eigen::Vector3d local(dx, dy, dz);
+                    Eigen::Vector3d world = Rz * local + base;
+
+                    pt.x = world.x();
+                    pt.y = world.y();
+                    pt.z = world.z();
+                    cloudMap.points.push_back(pt);
+                }
+            }
+        }
+    }
+
+    // ----------------------------------------------
+    // Finalize cloud
+    // ----------------------------------------------
+    cloudMap.width  = cloudMap.points.size();
+    cloudMap.height = 1;
+    cloudMap.is_dense = true;
+
+    kdtreeLocalMap.setInputCloud(cloudMap.makeShared());
+    _map_ok = true;
+
+    RCLCPP_WARN(
+        rclcpp::get_logger("CreateHarborMapFromSDF"),
+        "Created Harbor-map with %zu points",
+        cloudMap.points.size()
+    );
+}
+
+
 // Generate random obstacles, cylindrical and circular
 // Compared to the function above, this adds distance limits and scaling factors.
 void RandomMapGenerateCylinder() {
@@ -363,7 +483,7 @@ int i = 0;
 void pubSensedPoints() {
     // Convert the point cloud to ROS2 message format and publish it.
     pcl::toROSMsg(cloudMap, globalMap_pcd);
-    globalMap_pcd.header.frame_id = "ego_world";
+    globalMap_pcd.header.frame_id = "map";
     _all_map_pub->publish(globalMap_pcd);
 
     return; // With this return statement, subsequent code will not be executed.
@@ -401,7 +521,7 @@ void pubSensedPoints() {
     localMap.is_dense = true;
 
     pcl::toROSMsg(localMap, localMap_pcd);
-    localMap_pcd.header.frame_id = "ego_world";
+    localMap_pcd.header.frame_id = "map";
     _local_map_pub->publish(localMap_pcd);
 }
 
@@ -442,7 +562,7 @@ void clickCallback(const geometry_msgs::msg::PoseStamped &msg) {
     clicked_cloud_.is_dense = true;
 
     pcl::toROSMsg(clicked_cloud_, localMap_pcd);
-    localMap_pcd.header.frame_id = "ego_world";
+    localMap_pcd.header.frame_id = "map";
     click_map_pub_->publish(localMap_pcd);
 
     cloudMap.width = cloudMap.points.size();
@@ -536,6 +656,7 @@ int main(int argc, char **argv)
     // RandomMapGenerateCylinder();
     // Generate a very basic map: cube at (0,0,0), size 2x2x2
     CreateBasicCubeMap();
+    // CreatePilotMap();
 
     // Set the loop frequency and start the main loop
     rclcpp::Rate loop_rate(_sense_rate);

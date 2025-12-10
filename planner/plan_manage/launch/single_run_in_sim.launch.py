@@ -11,16 +11,18 @@ from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
     # Definition of LaunchConfiguration parameters
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     obj_num = LaunchConfiguration('obj_num', default=10)
     drone_id = LaunchConfiguration('drone_id', default=0)
     
     map_size_x = LaunchConfiguration('map_size_x', default = 50.0)
-    map_size_y = LaunchConfiguration('map_size_y', default = 25.0)
+    map_size_y = LaunchConfiguration('map_size_y', default = 50.0)
     map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     
     
     # Declare global parameters
+    use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
     drone_id_cmd = DeclareLaunchArgument('drone_id', default_value=drone_id, description='Drone ID')
     
@@ -44,6 +46,7 @@ def generate_launch_description():
         name='random_forest',
         output='screen',
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'map/x_size': 26.0},
             {'map/y_size': 20.0},
             {'map/z_size': 13.0},
@@ -75,6 +78,7 @@ def generate_launch_description():
             ('/mock_map', '/map_generator/global_cloud')
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'seed': 127},
             {'update_freq': 0.5},
             {'resolution': 0.1},
@@ -95,6 +99,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('ego_planner'), 'launch', 'advanced_param.launch.py')),
         launch_arguments={
+            'use_sim_time': use_sim_time,
             'drone_id': drone_id,
             'map_size_x_': map_size_x,
             'map_size_y_': map_size_y,
@@ -110,34 +115,55 @@ def generate_launch_description():
             'cy': str(243.44969177246094),
             'fx': str(387.229248046875),
             'fy': str(387.229248046875),
-            'max_vel': str(0.15),
-            'max_acc': str(0.2),
+            'max_vel': str(1.0),
+            'max_acc': str(0.4),
             'planning_horizon': str(5.0),
             'use_distinctive_trajs': 'True',
             'flight_type': str(2),
             'point_num': str(4),
-            'point0_x': str(8.0),
-            'point0_y': str(0.0),
-            'point0_z': str(-2.0),
+
+            'point0_x': str(6.5),
+            'point0_y': str(6.5),
+            'point0_z': str(-5.0),
             
-            'point1_x': str(-8.0),
-            'point1_y': str(0.0),
-            'point1_z': str(-2.0),
+            'point1_x': str(-6.5),
+            'point1_y': str(-6.5),
+            'point1_z': str(-3.0),
             
-            'point2_x': str(8.0),
-            'point2_y': str(8.0),
-            'point2_z': str(-2.0),
+            'point2_x': str(7.0),
+            'point2_y': str(0.0),
+            'point2_z': str(-3.65),
+            
+            'point3_x': str(0.0),
+            'point3_y': str(7.0),
+            'point3_z': str(-3.0),
+            
+            'point4_x': str(2.5),
+            'point4_y': str(-7.0),
+            'point4_z': str(-5.0),
+            
+        }.items()
+    )
+    # FOR PILOT
+    """'point0_x': str(10.93),
+            'point0_y': str(13.56),
+            'point0_z': str(-5.07),
+            
+            'point1_x': str(10.91),
+            'point1_y': str(13.53),
+            'point1_z': str(-3.65),
+            
+            'point2_x': str(10.69),
+            'point2_y': str(12.63),
+            'point2_z': str(-3.65),
             
             'point3_x': str(-8.0),
             'point3_y': str(-8.0),
             'point3_z': str(-2.0),
             
-            'point4_x': str(8.0),
+            'point4_x': str(4.0),
             'point4_y': str(0.0),
-            'point4_z': str(-2.0),
-        }.items()
-    )
-    
+            'point4_z': str(-2.0),"""
     # Trajectory server node
     traj_server_node = Node(
         package='ego_planner',
@@ -149,6 +175,7 @@ def generate_launch_description():
             ('planning/bspline', ['drone_', drone_id, '_planning/bspline'])
         ],
         parameters=[
+            {'use_sim_time': use_sim_time},
             {'traj_server/time_forward': 1.0}
         ]
     )
@@ -157,6 +184,7 @@ def generate_launch_description():
     simulator_include = IncludeLaunchDescription(PythonLaunchDescriptionSource(
         os.path.join(get_package_share_directory('ego_planner'), 'launch', 'simulator.launch.py')),
         launch_arguments={
+            'use_sim_time': use_sim_time,
             'use_dynamic': use_dynamic,
             'drone_id': drone_id,
             'map_size_x_': map_size_x,
@@ -170,7 +198,7 @@ def generate_launch_description():
     )
     
     ld = LaunchDescription()
-        
+    ld.add_action(use_sim_time_cmd)
     ld.add_action(map_size_x_cmd)
     ld.add_action(map_size_y_cmd)
     ld.add_action(map_size_z_cmd)

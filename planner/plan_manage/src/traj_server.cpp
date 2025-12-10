@@ -24,6 +24,9 @@ int traj_id_;
 double last_yaw_, last_yaw_dot_;
 double time_forward_;
 
+rclcpp::Node::SharedPtr node_;
+
+
 void bsplineCallback(traj_utils::msg::Bspline::ConstPtr msg)
 {
   // parse pos traj
@@ -167,14 +170,14 @@ void cmdCallback()
     return;
 
   // unified time source
-  rclcpp::Clock clock(RCL_ROS_TIME);  
-  rclcpp::Time time_now = clock.now();
+  //rclcpp::Clock clock(RCL_ROS_TIME);  
+  rclcpp::Time time_now = node_->get_clock()->now();
   double t_cur = (time_now - start_time_).seconds();
 
   Eigen::Vector3d pos(Eigen::Vector3d::Zero()), vel(Eigen::Vector3d::Zero()), acc(Eigen::Vector3d::Zero()), pos_f;
   std::pair<double, double> yaw_yawdot(0, 0);
 
-  static rclcpp::Time time_last = clock.now();
+  static rclcpp::Time time_last = node_->get_clock()->now();
   if (t_cur < traj_duration_ && t_cur >= 0.0)
   {
     pos = traj_[0].evaluateDeBoorT(t_cur);
@@ -207,7 +210,7 @@ void cmdCallback()
   time_last = time_now;
 
   cmd.header.stamp = time_now;
-  cmd.header.frame_id = "ego_world";
+  cmd.header.frame_id = "map";
   cmd.trajectory_flag = quadrotor_msgs::msg::PositionCommand::TRAJECTORY_STATUS_READY;
   cmd.trajectory_id = traj_id_;
 
@@ -236,7 +239,7 @@ int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("traj_server");
-
+  node_ = node;
   auto bspline_sub = node->create_subscription<traj_utils::msg::Bspline>(
       "planning/bspline",
       10,
@@ -246,7 +249,7 @@ int main(int argc, char **argv)
       "/position_cmd",
       50);
 
-  auto cmd_timer = node->create_wall_timer(
+  auto cmd_timer = node->create_timer(
       std::chrono::milliseconds(10),
       cmdCallback);
 

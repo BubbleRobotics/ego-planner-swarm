@@ -40,6 +40,7 @@ rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr sensorPub;
 rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr meshPub;
 rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr heightPub;
 
+rclcpp::Node::SharedPtr node_;
 // tf2_ros::TransformBroadcaster *broadcaster;
 std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster;
 
@@ -99,7 +100,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     // Pose
     poseROS.header = msg->header;
     poseROS.header.stamp = msg->header.stamp;
-    poseROS.header.frame_id = string("ego_world");
+    poseROS.header.frame_id = string("map");
     poseROS.pose.position.x = pose(0);
     poseROS.pose.position.y = pose(1);
     poseROS.pose.position.z = pose(2);
@@ -116,7 +117,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     yprVel(1) = -atan2(vel(2), norm(vel.rows(0, 1), 2));
     yprVel(2) = 0;
     q = R_to_quaternion(ypr_to_R(yprVel));
-    velROS.header.frame_id = string("ego_world");
+    velROS.header.frame_id = string("map");
     velROS.header.stamp = msg->header.stamp;
     velROS.ns = string("velocity");
     velROS.id = 0;
@@ -186,7 +187,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
                 }
             }
         }
-        covROS.header.frame_id = string("ego_world");
+        covROS.header.frame_id = string("map");
         covROS.header.stamp = msg->header.stamp;
         covROS.ns = string("covariance");
         covROS.id = 0;
@@ -234,7 +235,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
                     }
                 }
             }
-            covVelROS.header.frame_id = string("ego_world");
+            covVelROS.header.frame_id = string("map");
             covVelROS.header.stamp = msg->header.stamp;
             covVelROS.ns = string("covariance_velocity");
             covVelROS.id = 0;
@@ -265,8 +266,8 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     rclcpp::Time t = msg->header.stamp;
     if ((t - pt).seconds() > 0.5)
     {
-        trajROS.header.frame_id = string("ego_world");
-        trajROS.header.stamp = rclcpp::Clock().now();
+        trajROS.header.frame_id = string("map");
+        trajROS.header.stamp = node_->get_clock()->now();
         trajROS.ns = string("trajectory");
         trajROS.type = visualization_msgs::msg::Marker::LINE_LIST;
         trajROS.action = visualization_msgs::msg::Marker::ADD;
@@ -306,7 +307,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     }
 
     // Sensor availability
-    sensorROS.header.frame_id = string("ego_world");
+    sensorROS.header.frame_id = string("map");
     sensorROS.header.stamp = msg->header.stamp;
     sensorROS.ns = string("sensor");
     sensorROS.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
@@ -414,7 +415,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         // Publish world -> base_s
         geometry_msgs::msg::TransformStamped transformStamped;
         transformStamped.header.stamp = msg->header.stamp; // 时间戳
-        transformStamped.header.frame_id = "ego_world";        // 父坐标系
+        transformStamped.header.frame_id = "map";        // 父坐标系
         transformStamped.child_frame_id = base_s;          // 子坐标系
         transformStamped.transform.translation.x = transform.getOrigin().x();
         transformStamped.transform.translation.y = transform.getOrigin().y();
@@ -506,15 +507,15 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("odom_visualization");
-
-    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/hummingbird.mesh");
+    node_ = node;
+    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/hummingbird.mesh");//TODO use BlueROV here 
     node->declare_parameter("color/r", 1.0);
     node->declare_parameter("color/g", 0.0);
     node->declare_parameter("color/b", 0.0);
     node->declare_parameter("color/a", 1.0);
     node->declare_parameter("origin", false);
     node->declare_parameter("robot_scale", 2.0);
-    node->declare_parameter("frame_id", "ego_world");
+    node->declare_parameter("frame_id", "map");
 
     node->declare_parameter("cross_config", false);
     node->declare_parameter("tf45", false);

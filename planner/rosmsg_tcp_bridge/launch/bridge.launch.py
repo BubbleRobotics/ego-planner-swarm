@@ -23,6 +23,7 @@ def generate_launch_description():
 
         output='screen',
         parameters=[
+            {'use_sim_time': False},
             {'next_drone_ip': '127.0.0.1'},
             {'broadcast_ip': '127.0.0.255'},
             {'drone_id': drone_id},

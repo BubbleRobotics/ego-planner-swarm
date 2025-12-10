@@ -114,7 +114,7 @@ namespace fast_planner
         "/dynamic/obj", 10, std::bind(&ObjPredictor::markerCallback, this, std::placeholders::_1));
 
     /* update prediction */
-    predict_timer_ = this->create_wall_timer(
+    predict_timer_ = this->create_timer(
         std::chrono::duration<double>(1.0 / predict_rate_),
         std::bind(&ObjPredictor::predictCallback, this));
   }

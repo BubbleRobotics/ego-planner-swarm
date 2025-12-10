@@ -23,7 +23,7 @@ public:
     WaypointGenerator(std::string name) : Node(name)
     {
         trigged_time = rclcpp::Time(0);
-
+        
         this->declare_parameter("waypoint_type", string("manual"));
         this->get_parameter("waypoint_type", waypoint_type);
 
@@ -136,8 +136,8 @@ private:
 
     void publish_waypoints()
     {
-        waypoints.header.frame_id = std::string("ego_world");
-        waypoints.header.stamp = rclcpp::Clock().now();
+        waypoints.header.frame_id = std::string("map");
+        waypoints.header.stamp = this->get_clock()->now();
         pub1->publish(waypoints);
         geometry_msgs::msg::PoseStamped init_pose;
         init_pose.header = odom.header;
@@ -150,8 +150,8 @@ private:
     {
         nav_msgs::msg::Path wp_vis = waypoints;
         geometry_msgs::msg::PoseArray poseArray;
-        poseArray.header.frame_id = std::string("ego_world");
-        poseArray.header.stamp = rclcpp::Clock().now();
+        poseArray.header.frame_id = std::string("map");
+        poseArray.header.stamp = this->get_clock()->now();
 
         {
             geometry_msgs::msg::Pose init_pose;
@@ -204,7 +204,7 @@ private:
 
     void goal_callback(const geometry_msgs::msg::PoseStamped::ConstPtr &msg)
     {
-        trigged_time = rclcpp::Clock().now();
+        trigged_time = this->get_clock()->now();
         this->get_parameter("waypoint_type", waypoint_type);
 
         if (waypoint_type == string("circle"))
@@ -344,7 +344,6 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<WaypointGenerator>("waypoint_generator");
-
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

@@ -308,7 +308,7 @@ int main(int argc, char **argv)
     Control control;
 
     nav_msgs::msg::Odometry odom_msg;
-    odom_msg.header.frame_id = "/ego_world";
+    odom_msg.header.frame_id = "/map";
     odom_msg.child_frame_id = "/" + quad_name;
 
     sensor_msgs::msg::Imu imu;
