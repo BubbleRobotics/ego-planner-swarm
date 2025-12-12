@@ -220,6 +220,8 @@ private:
   void raycastProcess();
   void clearAndInflateLocalMap();
 
+  void updateLocalBoundsFromCamera();
+    
   inline void inflatePoint(const Eigen::Vector3i &pt, int step, vector<Eigen::Vector3i> &pts);
   int setCacheOccupancy(Eigen::Vector3d pos, int occ);
   Eigen::Vector3d closetPointInMap(const Eigen::Vector3d &pt, const Eigen::Vector3d &camera_pt);

@@ -206,6 +206,17 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   // eng_ = default_random_engine(rd());
 }
 
+void GridMap::updateLocalBoundsFromCamera()
+{
+  Eigen::Vector3d local_range_min = md_.camera_pos_ - mp_.local_update_range_;
+  Eigen::Vector3d local_range_max = md_.camera_pos_ + mp_.local_update_range_;
+
+  posToIndex(local_range_min, md_.local_bound_min_);
+  posToIndex(local_range_max, md_.local_bound_max_);
+  boundIndex(md_.local_bound_min_);
+  boundIndex(md_.local_bound_max_);
+}
+
 void GridMap::resetBuffer()
 {
   Eigen::Vector3d min_pos = mp_.map_min_boundary_;
@@ -487,31 +498,12 @@ void GridMap::raycastProcess()
     }
   }
 
-  min_x = min(min_x, md_.camera_pos_(0));
-  min_y = min(min_y, md_.camera_pos_(1));
-  min_z = min(min_z, md_.camera_pos_(2));
-
-  max_x = max(max_x, md_.camera_pos_(0));
-  max_y = max(max_y, md_.camera_pos_(1));
-  max_z = max(max_z, md_.camera_pos_(2));
-  max_z = max(max_z, mp_.ground_height_);
-
-  posToIndex(Eigen::Vector3d(max_x, max_y, max_z), md_.local_bound_max_);
-  posToIndex(Eigen::Vector3d(min_x, min_y, min_z), md_.local_bound_min_);
-  boundIndex(md_.local_bound_min_);
-  boundIndex(md_.local_bound_max_);
-
+  updateLocalBoundsFromCamera();
   md_.local_updated_ = true;
 
-  // update occupancy cached in queue
-  Eigen::Vector3d local_range_min = md_.camera_pos_ - mp_.local_update_range_;
-  Eigen::Vector3d local_range_max = md_.camera_pos_ + mp_.local_update_range_;
-
-  Eigen::Vector3i min_id, max_id;
-  posToIndex(local_range_min, min_id);
-  posToIndex(local_range_max, max_id);
-  boundIndex(min_id);
-  boundIndex(max_id);
+  // And for the in_local check:
+  Eigen::Vector3i min_id = md_.local_bound_min_;
+  Eigen::Vector3i max_id = md_.local_bound_max_;
 
   // std::cout << "cache all: " << md_.cache_voxel_.size() << std::endl;
 
@@ -831,8 +823,8 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &img)
   if (isnan(md_.camera_pos_(0)) || isnan(md_.camera_pos_(1)) || isnan(md_.camera_pos_(2)))
     return;
 
-  this->resetBuffer(md_.camera_pos_ - mp_.local_update_range_,
-                    md_.camera_pos_ + mp_.local_update_range_);
+  /*this->resetBuffer(md_.camera_pos_ - mp_.local_update_range_,
+                    md_.camera_pos_ + mp_.local_update_range_);*/
 
   pcl::PointXYZ pt;
   Eigen::Vector3d p3d, p3d_inf;
@@ -904,12 +896,7 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &img)
 
   max_z = max(max_z, mp_.ground_height_);
 
-  posToIndex(Eigen::Vector3d(max_x, max_y, max_z), md_.local_bound_max_);
-  posToIndex(Eigen::Vector3d(min_x, min_y, min_z), md_.local_bound_min_);
-
-  // Update local map boundaries
-  boundIndex(md_.local_bound_min_);
-  boundIndex(md_.local_bound_max_);
+  updateLocalBoundsFromCamera();
 
   // add virtual ceiling to limit flight height
   // The update adds a virtual ceiling to control the flight altitude boundary.
