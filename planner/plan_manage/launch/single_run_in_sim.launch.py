@@ -119,12 +119,12 @@ def generate_launch_description():
             'max_acc': str(0.4),
             'planning_horizon': str(5.0),
             'use_distinctive_trajs': 'True',
-            'flight_type': str(2),
+            'flight_type': str(1),
             'point_num': str(4),
 
             'point0_x': str(6.5),
             'point0_y': str(6.5),
-            'point0_z': str(-5.0),
+            'point0_z': str(-3.0),
             
             'point1_x': str(-6.5),
             'point1_y': str(-6.5),
