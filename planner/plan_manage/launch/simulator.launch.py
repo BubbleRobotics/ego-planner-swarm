@@ -119,7 +119,7 @@ def generate_launch_description():
                     {'simulator/init_state_y': init_y},
                     {'simulator/init_state_z': init_z}],
         
-        remappings=[('odom', ['model/bluerov2/', odometry_topic]),
+        remappings=[('odom', ['mavros/odometry/out']),
                     ('cmd', ['drone_', drone_id, '_so3_cmd']),
                     ('force_disturbance', ['drone_', drone_id,'_force_disturbance']),
                     ('moment_disturbance', ['drone_', drone_id,'_moment_disturbance'])],
@@ -154,7 +154,7 @@ def generate_launch_description():
                 gains_file,
                 corrections_file
             ],
-            remappings=[('odom', ['model/bluerov2/', odometry_topic]),
+            remappings=[('odom', ['mavros/odometry/out']),
                         ('position_cmd', ['drone_', drone_id, '_planning/pos_cmd']),
                         ('motors', ['drone_', drone_id, '_motors']),
                         ('corrections', ['drone_', drone_id, '_corrections']),
@@ -187,7 +187,7 @@ def generate_launch_description():
         ],
         remappings=[
             ('command', ['drone_', drone_id, '_planning/pos_cmd']),
-            ('odometry', ['model/bluerov2/', odometry_topic])
+            ('odometry', ['mavros/odometry/out'])
         ],
         condition = UnlessCondition(use_dynamic)
     )
@@ -198,7 +198,7 @@ def generate_launch_description():
         name=['drone_', drone_id, '_odom_visualization'],
         output='screen',
         remappings=[
-            ('odom', ['model/bluerov2/', odometry_topic]),
+            ('odom', ['mavros/odometry/out']),
             ('robot', ['drone_', drone_id, '_vis/robot']),
             ('path', ['drone_', drone_id, '_vis/path']),
             ('time_gap', ['drone_', drone_id, '_vis/time_gap']),
@@ -246,7 +246,7 @@ def generate_launch_description():
         ],
         remappings=[
             ('global_map', '/map_generator/global_cloud'),
-            ('odometry', ['model/bluerov2/', odometry_topic]),
+            ('odometry', ['mavros/odometry/out']),
             ('pcl_render_node/cloud', ['drone_', drone_id, '_pcl_render_node/cloud']),
             ('depth', ['drone_', drone_id, '_pcl_render_node/depth'])
         ]
