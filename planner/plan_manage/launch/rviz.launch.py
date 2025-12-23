@@ -5,8 +5,6 @@ from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
 from launch_ros.actions import Node
 
-import launch_ros.actions
-import launch_ros.descriptions
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
@@ -15,7 +13,7 @@ def generate_launch_description():
 
     rviz_config_path = os.path.join(get_package_share_directory('ego_planner'), 'launch', 'default.rviz')
     rviz_node = Node(
-            package='rviz2', executable='rviz2', output='screen',
+            package='rviz2', executable='rviz2', output='screen', name='ego_rviz',
             arguments=['--display-config', rviz_config_path],
             parameters=[
                 {'use_sim_time': use_sim_time}

@@ -298,7 +298,7 @@ namespace ego_planner
     pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
 
     /*** STEP 3: REFINE(RE-ALLOCATE TIME) IF NECESSARY ***/
-    // Note: Only adjust time in single drone mode. But we still allow drone_0 to adjust its time profile.
+    // Note: Only adjust time in single drone mode. But we still allow ego to adjust its time profile.
     if (pp_.drone_id <= 0)
     {
 

@@ -7,6 +7,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/range.hpp"
 #include "visualization_msgs/msg/marker.hpp"
@@ -30,6 +31,7 @@ bool origin = false;
 bool isOriginSet = false;
 colvec poseOrigin(6);
 
+rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr goalPub;
 rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr posePub;
 rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPub;
 rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr velPub;
@@ -44,6 +46,7 @@ rclcpp::Node::SharedPtr node_;
 // tf2_ros::TransformBroadcaster *broadcaster;
 std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster;
 
+geometry_msgs::msg::PointStamped goalROS;
 geometry_msgs::msg::PoseStamped poseROS;
 nav_msgs::msg::Path pathROS;
 visualization_msgs::msg::Marker velROS;
@@ -62,6 +65,25 @@ rclcpp::Time debug_time_last = rclcpp::Clock().now();
 double time_gap = 0;
 std_msgs::msg::Float64 time_message;
 rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr timePub;
+
+void goal_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+{
+    // Pose
+    colvec pose(6);
+    pose(0) = msg->pose.position.x;
+    pose(1) = msg->pose.position.y;
+    pose(2) = msg->pose.position.z;
+
+    
+    goalROS.header = msg->header;
+    goalROS.header.stamp = msg->header.stamp;
+    goalROS.header.frame_id = string("map");
+    goalROS.point.x = pose(0);
+    goalROS.point.y = pose(1);
+    goalROS.point.z = pose(2);
+
+    goalPub->publish(goalROS);
+}
 
 void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
@@ -112,11 +134,17 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     posePub->publish(poseROS);
 
     // Velocity
+    mat Rwb = ypr_to_R(pose.rows(3,5));
+    colvec vel_world = Rwb * vel;
+
     colvec yprVel(3);
-    yprVel(0) = atan2(vel(1), vel(0));
-    yprVel(1) = -atan2(vel(2), norm(vel.rows(0, 1), 2));
+    yprVel(0) = atan2(vel_world(1), vel_world(0));
+    yprVel(1) = -atan2(vel_world(2), norm(vel_world.rows(0,1), 2));
     yprVel(2) = 0;
+
     q = R_to_quaternion(ypr_to_R(yprVel));
+
+    velROS.scale.x = norm(vel_world, 2);
     velROS.header.frame_id = string("map");
     velROS.header.stamp = msg->header.stamp;
     velROS.ns = string("velocity");
@@ -344,7 +372,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     // Mesh model
     meshROS.header.frame_id = _frame_id;
     meshROS.header.stamp = msg->header.stamp;
-    meshROS.ns = "mesh";
+    meshROS.ns = "dae";
     meshROS.id = 0;
     meshROS.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
     meshROS.action = visualization_msgs::msg::Marker::ADD;
@@ -474,7 +502,7 @@ void cmd_callback(const quadrotor_msgs::msg::PositionCommand cmd)
     // Mesh model
     meshROS.header.frame_id = _frame_id;
     meshROS.header.stamp = cmd.header.stamp;
-    meshROS.ns = "mesh";
+    meshROS.ns = "dae";
     meshROS.id = 0;
     meshROS.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
     meshROS.action = visualization_msgs::msg::Marker::ADD;
@@ -508,13 +536,13 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("odom_visualization");
     node_ = node;
-    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/hummingbird.mesh");//TODO use BlueROV here 
+    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/bluerov2.dae");// TODO use BlueROV here 
     node->declare_parameter("color/r", 1.0);
     node->declare_parameter("color/g", 0.0);
     node->declare_parameter("color/b", 0.0);
     node->declare_parameter("color/a", 1.0);
     node->declare_parameter("origin", false);
-    node->declare_parameter("robot_scale", 2.0);
+    node->declare_parameter("robot_scale", 0.025);
     node->declare_parameter("frame_id", "map");
 
     node->declare_parameter("cross_config", false);
@@ -548,7 +576,10 @@ int main(int argc, char **argv)
         "odom", 100, odom_callback);
     auto sub_cmd = node->create_subscription<quadrotor_msgs::msg::PositionCommand>(
         "cmd", 100, cmd_callback);
+    auto sub_goal = node->create_subscription<geometry_msgs::msg::PoseStamped>(
+        "ego_planner/move_base_simple/goal", 100, goal_callback);
 
+    goalPub = node->create_publisher<geometry_msgs::msg::PointStamped>("goal", 100);
     posePub = node->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 100);
     pathPub = node->create_publisher<nav_msgs::msg::Path>("path", 100);
     velPub = node->create_publisher<visualization_msgs::msg::Marker>("velocity", 100);

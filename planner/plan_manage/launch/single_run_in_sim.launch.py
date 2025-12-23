@@ -39,35 +39,6 @@ def generate_launch_description():
     use_dynamic = LaunchConfiguration('use_dynamic', default=False)  
     use_dynamic_cmd = DeclareLaunchArgument('use_dynamic', default_value=use_dynamic, description='Use Drone Simulation Considering Dynamics or Not')
     
-    # map
-    map_generator_node = Node(
-        package='map_generator',
-        executable='random_forest',
-        name='random_forest',
-        output='screen',
-        parameters=[
-            {'use_sim_time': use_sim_time},
-            {'map/x_size': 26.0},
-            {'map/y_size': 20.0},
-            {'map/z_size': 13.0},
-            {'map/resolution': 0.1},
-            {'ObstacleShape/seed': 1.0},
-            {'map/obs_num': 250},
-            {'ObstacleShape/lower_rad': 0.5},
-            {'ObstacleShape/upper_rad': 0.7},
-            {'ObstacleShape/lower_hei': 0.0},
-            {'ObstacleShape/upper_hei': 3.0},
-            {'map/circle_num': 250},
-            {'ObstacleShape/radius_l': 0.7},
-            {'ObstacleShape/radius_h': 0.5},
-            {'ObstacleShape/z_l': 0.7},
-            {'ObstacleShape/z_h': 0.8},
-            {'ObstacleShape/theta': 0.5},
-            {'pub_rate': 1.0},
-            {'min_distance': 0.8}
-        ],
-        condition = UnlessCondition(use_mockamap)
-    )
 
     mockamap_node = Node(
         package='mockamap',
@@ -168,11 +139,11 @@ def generate_launch_description():
     traj_server_node = Node(
         package='ego_planner',
         executable='traj_server',
-        name=['drone_', drone_id, '_traj_server'],
+        name=['ego_traj_server'],
         output='screen',
         remappings=[
-            ('position_cmd', ['drone_', drone_id, '_planning/pos_cmd']),
-            ('planning/bspline', ['drone_', drone_id, '_planning/bspline'])
+            ('position_cmd', ['ego_planner/pos_cmd']),
+            ('planning/bspline', ['ego_planner/bspline'])
         ],
         parameters=[
             {'use_sim_time': use_sim_time},
@@ -209,7 +180,6 @@ def generate_launch_description():
     ld.add_action(use_mockamap_cmd)
 
     # Add Map Generator node
-    ld.add_action(map_generator_node)
     ld.add_action(mockamap_node)
     ld.add_action(advanced_param_include)
     ld.add_action(traj_server_node)

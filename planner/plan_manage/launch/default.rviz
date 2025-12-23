@@ -164,8 +164,8 @@ Visualization Manager:
       Displays:
         - Class: rviz_common/Group
           Displays:
-            - Class: rviz_default_plugins/Marker
-              Enabled: false
+            - Class: rviz_default_plugins/PointStamped
+              Enabled: true
               Name: goal_point
               Namespaces:
                 {}
@@ -175,7 +175,20 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_plan_vis/goal_point
+                Value: /ego_vis/goal
+              Value: false  
+            - Class: rviz_default_plugins/Marker
+              Enabled: false
+              Name: preplanned_goal_point
+              Namespaces:
+                {}
+              Topic:
+                Depth: 5
+                Durability Policy: Volatile
+                Filter size: 10
+                History Policy: Keep Last
+                Reliability Policy: Reliable
+                Value: /ego_plan_vis/goal_point
               Value: false
             - Class: rviz_default_plugins/Marker
               Enabled: false
@@ -188,7 +201,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_plan_vis/global_list
+                Value: /ego_plan_vis/global_list
               Value: false
             - Class: rviz_default_plugins/Marker
               Enabled: true
@@ -201,7 +214,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_plan_vis/optimal_list
+                Value: /ego_plan_vis/optimal_list
               Value: true
             - Class: rviz_default_plugins/Marker
               Enabled: false
@@ -214,7 +227,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_plan_vis/a_star_list
+                Value: /ego_plan_vis/a_star_list
               Value: false
             - Class: rviz_default_plugins/Marker
               Enabled: false
@@ -227,7 +240,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_plan_vis/init_list
+                Value: /ego_plan_vis/init_list
               Value: false
             - Alpha: 1
               Buffer Length: 1
@@ -255,7 +268,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_vis/path
+                Value: /ego_vis/path
               Value: true
           Enabled: true
           Name: Planning
@@ -291,7 +304,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_grid/grid_map/occupancy_inflate
+                Value: /ego_grid/grid_map/occupancy_inflate
               Use Fixed Frame: true
               Use rainbow: true
               Value: true
@@ -310,7 +323,7 @@ Visualization Manager:
                 Filter size: 10
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_vis/robot
+                Value: /ego_vis/robot
               Value: true
             - Class: rviz_default_plugins/Image
               Enabled: false
@@ -324,7 +337,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /drone_0_pcl_render_node/depth
+                Value: /ego_pcl_render_node/depth
               Value: false
           Enabled: true
           Name: Simulation
@@ -370,7 +383,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /clicked_point
+        Value: /ego_planner/clicked_point
   Transformation:
     Current:
       Class: rviz_default_plugins/TF

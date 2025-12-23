@@ -95,26 +95,26 @@ def generate_launch_description():
     ego_planner_node = Node(
         package='ego_planner',
         executable='ego_planner_node',
-        name=['drone_', drone_id, '_ego_planner_node'],
+        name=['ego_planner_node'],
         output='screen',
         remappings=[
             ('odom_world', ['mavros/odometry/out']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2/odometry']
-            ('planning/bspline', ['drone_', drone_id, '_planning/bspline']),
-            ('planning/data_display', ['drone_', drone_id, '_planning/data_display']),
+            ('planning/bspline', ['ego_planner/bspline']),
+            ('planning/data_display', ['ego_planner/data_display']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
             ('planning/broadcast_bspline_to_planner', '/broadcast_bspline'),
             
-            ('goal_point', ['drone_', drone_id, '_plan_vis/goal_point']),
-            ('global_list', ['drone_', drone_id, '_plan_vis/global_list']),
-            ('init_list', ['drone_', drone_id, '_plan_vis/init_list']),
-            ('optimal_list', ['drone_', drone_id, '_plan_vis/optimal_list']),
-            ('a_star_list', ['drone_', drone_id, '_plan_vis/a_star_list']),
+            ('goal_point', ['ego_plan_vis/goal_point']),
+            ('global_list', ['ego_plan_vis/global_list']),
+            ('init_list', ['ego_plan_vis/init_list']),
+            ('optimal_list', ['ego_plan_vis/optimal_list']),
+            ('a_star_list', ['ego_plan_vis/a_star_list']),
             
             ('grid_map/odom', ['mavros/odometry/out']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
-            ('grid_map/cloud', ['/camera_d455/depth/image_raw/points_map']), # TODO change remapping OLD: ['drone_', drone_id, '_', cloud_topic]
-            ('grid_map/pose', ['drone_', drone_id, '_', camera_pose_topic]),
-            ('grid_map/depth', ['drone_', drone_id, '_', depth_topic]),
-            ('grid_map/occupancy_inflate', ['drone_', drone_id, '_grid/grid_map/occupancy_inflate'])
+            ('grid_map/cloud', ['/camera_d455/depth/image_raw/points_map']), # TODO change remapping OLD: ['ego_', cloud_topic]
+            ('grid_map/pose', ['ego_', camera_pose_topic]),
+            ('grid_map/depth', ['ego_', depth_topic]),
+            ('grid_map/occupancy_inflate', ['ego_grid/grid_map/occupancy_inflate'])
         ],
         parameters=[
             {'use_sim_time': use_sim_time},
