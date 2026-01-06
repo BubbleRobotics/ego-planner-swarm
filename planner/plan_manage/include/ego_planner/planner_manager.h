@@ -46,6 +46,8 @@ namespace ego_planner
 
     bool checkCollision(int drone_id);
     
+    void setMaxVelAcc(float max_vel, float max_acc);
+    
 
     PlanParameters pp_;
     LocalTrajData local_data_;

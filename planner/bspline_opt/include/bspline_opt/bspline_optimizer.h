@@ -125,6 +125,7 @@ namespace ego_planner
 
     inline int getOrder(void) { return order_; }
     inline double getSwarmClearance(void) { return swarm_clearance_; }
+    void setBsplineMaxVelAcc(float max_vel, float max_acc);
 
   private:
     rclcpp::Node::SharedPtr node_;

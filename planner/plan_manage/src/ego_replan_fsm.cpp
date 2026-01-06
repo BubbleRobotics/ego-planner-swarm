@@ -1,5 +1,7 @@
 
 #include <ego_planner/ego_replan_fsm.h>
+#include <traj_utils/srv/vel_acc_cmd.hpp>
+#include <traj_utils/srv/set_error_threshold.hpp>
 
 namespace ego_planner
 {
@@ -22,6 +24,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/emergency_time", 1.0);
     node_->declare_parameter("fsm/realworld_experiment", false);
     node_->declare_parameter("fsm/fail_safe", true);
+    node_->declare_parameter("fsm/pos_error_threshold", 0.3);
 
     node_->get_parameter("fsm/flight_type", target_type_);
     node_->get_parameter("fsm/thresh_replan_time", replan_thresh_);
@@ -31,6 +34,7 @@ namespace ego_planner
     node_->get_parameter("fsm/emergency_time", emergency_time_);
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
+    node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
 
     have_trigger_ = !flag_realworld_experiment_;
 
@@ -72,6 +76,18 @@ namespace ego_planner
         {
           this->odometryCallback(msg);
         });
+
+    set_velocity_acceleration_service_ = node_->create_service<traj_utils::srv::VelAccCmd>(
+        "ego_planner/set_vel_acc_cmd",
+        std::bind(&EGOReplanFSM::velAccCmdCallback, this,
+        std::placeholders::_1, std::placeholders::_2)
+      );
+    set_error_threshold_service_ = node_->create_service<traj_utils::srv::SetErrorThreshold>(
+        "ego_planner/set_error_threshold_cmd",
+        std::bind(&EGOReplanFSM::setErrorThresholdCallback, this,
+        std::placeholders::_1, std::placeholders::_2)
+      );
+
     // std::bind(&EGOReplanFSM::odometryCallback, this, std::placeholders::_1));
 
     if (planner_manager_->pp_.drone_id >= 1)
@@ -153,6 +169,26 @@ namespace ego_planner
     else
       cout << "Wrong target_type_ value! target_type_=" << target_type_ << endl;
   }
+  
+  void EGOReplanFSM::setErrorThresholdCallback(
+    const std::shared_ptr<traj_utils::srv::SetErrorThreshold::Request> request,
+    std::shared_ptr<traj_utils::srv::SetErrorThreshold::Response> response)
+  {
+    pos_error_threshold_ = request->pos_error_threshold;
+    response->success = true;
+    return;
+  }
+
+  void EGOReplanFSM::velAccCmdCallback(
+    const std::shared_ptr<traj_utils::srv::VelAccCmd::Request> request,
+    std::shared_ptr<traj_utils::srv::VelAccCmd::Response> response)
+  {
+    float max_vel = request->max_velocity;
+    float max_acc = request->max_acceleration;
+    planner_manager_->setMaxVelAcc(max_vel, max_acc);
+    response->success = true;
+    return;
+  }
 
   void EGOReplanFSM::readGivenWps()
 
@@ -187,7 +223,7 @@ namespace ego_planner
   {
     bool success = false;
     success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
-
+    
     if (success)
     {
       end_pt_ = next_wp;
@@ -209,14 +245,10 @@ namespace ego_planner
         changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
       else
       {
-        while (exec_state_ != EXEC_TRAJ)
-        {
-          rclcpp::spin_some(node_);
-          std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        
         changeFSMExecState(REPLAN_TRAJ, "TRIG");
       }
-
+      
       visualization_->displayGlobalPathList(gloabl_traj, 0.1, 0);
     }
     else
@@ -235,9 +267,12 @@ namespace ego_planner
   void EGOReplanFSM::waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg)
   {
     if (-0.1 < msg->pose.position.z)
+      {
+      cout << "Ignoring waypoint (above water level)!" << endl;
       return;
+      }
 
-    cout << "Triggered!" << endl;
+    cout << "New Waypoint received!" << endl;
 
     init_pt_ = odom_pos_;
 
@@ -477,16 +512,16 @@ namespace ego_planner
   void EGOReplanFSM::execFSMCallback()
   {
     exec_timer_->cancel(); // To avoid blockage
-
+    
     static int fsm_num = 0;
     fsm_num++;
     if (fsm_num == 100)
     {
       printFSMExecState();
       if (!have_odom_)
-        cout << "no odom." << endl;
+        cout << "No odometry data." << endl;
       if (!have_target_)
-        cout << "wait for goal or trigger." << endl;
+        cout << "Waiting for goal or trigger." << endl;
       fsm_num = 0;
     }
 
@@ -813,7 +848,7 @@ namespace ego_planner
       Eigen::Vector3d planned_pos = info->position_traj_.evaluateDeBoorT(t_cur);
       double tracking_error = (planned_pos - odom_pos_).norm();
 
-      if (tracking_error > 0.4)  // TODO tune this threshold
+      if (tracking_error > pos_error_threshold_)  // TODO tune this threshold
       {
         RCLCPP_WARN(
             node_->get_logger(),
@@ -1009,6 +1044,7 @@ namespace ego_planner
 
     if ((end_pt_ - local_target_pt_).norm() < (planner_manager_->pp_.max_vel_ * planner_manager_->pp_.max_vel_) / (2 * planner_manager_->pp_.max_acc_))
     {
+      cout << "Using zero target velocity." << endl;
       local_target_vel_ = Eigen::Vector3d::Zero();
     }
     else

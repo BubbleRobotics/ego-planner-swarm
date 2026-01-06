@@ -3,6 +3,7 @@
 #include "traj_utils/msg/bspline.hpp"
 #include "quadrotor_msgs/msg/position_command.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "traj_utils/msg/snake_yaw.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include <rclcpp/rclcpp.hpp>
 
@@ -23,8 +24,10 @@ int traj_id_;
 // yaw control
 double last_yaw_, last_yaw_dot_;
 double time_forward_;
-
+bool use_snake_yaw = false;
+double snake_yaw = 0.0;
 rclcpp::Node::SharedPtr node_;
+
 
 
 void bsplineCallback(traj_utils::msg::Bspline::ConstPtr msg)
@@ -65,14 +68,19 @@ void bsplineCallback(traj_utils::msg::Bspline::ConstPtr msg)
   traj_.push_back(pos_traj);
   traj_.push_back(traj_[0].getDerivative());
   traj_.push_back(traj_[1].getDerivative());
-
   traj_duration_ = traj_[0].getTimeSum();
 
   receive_traj_ = true;
 }
 
-std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclcpp::Time &time_now, rclcpp::Time &time_last)
+std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, double dt)
 {
+  // If the robot is in inspection mode, use the fixed orientation provided by snake_yaw.
+  if (use_snake_yaw)
+  {
+    return std::make_pair(snake_yaw, 0.0);
+  }
+
   constexpr double PI = 3.1415926;
   constexpr double YAW_DOT_MAX_PER_SEC = PI;
   // constexpr double YAW_DOT_DOT_MAX_PER_SEC = PI;
@@ -82,7 +90,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclc
 
   Eigen::Vector3d dir = t_cur + time_forward_ <= traj_duration_ ? traj_[0].evaluateDeBoorT(t_cur + time_forward_) - pos : traj_[0].evaluateDeBoorT(traj_duration_) - pos;
   double yaw_temp = dir.norm() > 0.1 ? atan2(dir(1), dir(0)) : last_yaw_;
-  double max_yaw_change = YAW_DOT_MAX_PER_SEC * (time_now - time_last).seconds();
+  double max_yaw_change = YAW_DOT_MAX_PER_SEC * dt;
   if (yaw_temp - last_yaw_ > PI)
   {
     if (yaw_temp - last_yaw_ - 2 * PI < -max_yaw_change)
@@ -99,7 +107,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclc
       if (yaw - last_yaw_ > PI)
         yawdot = -YAW_DOT_MAX_PER_SEC;
       else
-        yawdot = (yaw_temp - last_yaw_) / (time_now - time_last).seconds();
+        yawdot = (yaw_temp - last_yaw_) / dt;
     }
   }
   else if (yaw_temp - last_yaw_ < -PI)
@@ -118,7 +126,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclc
       if (yaw - last_yaw_ < -PI)
         yawdot = YAW_DOT_MAX_PER_SEC;
       else
-        yawdot = (yaw_temp - last_yaw_) / (time_now - time_last).seconds();
+        yawdot = (yaw_temp - last_yaw_) / dt;
     }
   }
   else
@@ -147,7 +155,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclc
       else if (yaw - last_yaw_ < -PI)
         yawdot = YAW_DOT_MAX_PER_SEC;
       else
-        yawdot = (yaw_temp - last_yaw_) / (time_now - time_last).seconds();
+        yawdot = (yaw_temp - last_yaw_) / dt;
     }
   }
 
@@ -161,6 +169,12 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, rclc
   yaw_yawdot.second = yawdot;
 
   return yaw_yawdot;
+}
+
+void snakeyawCallback(traj_utils::msg::SnakeYaw::ConstPtr msg)
+{
+  use_snake_yaw = msg->use_snake_yaw;
+  snake_yaw = msg->snake_yaw;
 }
 
 void cmdCallback()
@@ -178,6 +192,13 @@ void cmdCallback()
   std::pair<double, double> yaw_yawdot(0, 0);
 
   static rclcpp::Time time_last = node_->get_clock()->now();
+
+  double dt = (time_now - time_last).seconds();
+  // Guard dt
+  if (dt <= 1e-7) {
+    dt = 1e-7;
+  }
+
   if (t_cur < traj_duration_ && t_cur >= 0.0)
   {
     pos = traj_[0].evaluateDeBoorT(t_cur);
@@ -185,7 +206,7 @@ void cmdCallback()
     acc = traj_[2].evaluateDeBoorT(t_cur);
 
     /*** calculate yaw ***/
-    yaw_yawdot = calculate_yaw(t_cur, pos, time_now, time_last);
+    yaw_yawdot = calculate_yaw(t_cur, pos, dt);
     /*** calculate yaw ***/
 
     double tf = min(traj_duration_, t_cur + 2.0);
@@ -232,6 +253,7 @@ void cmdCallback()
 
   last_yaw_ = cmd.yaw;
 
+
   pos_cmd_pub->publish(cmd);
 }
 
@@ -244,6 +266,11 @@ int main(int argc, char **argv)
       "planning/bspline",
       10,
       bsplineCallback);
+
+  auto snake_yaw_sub = node->create_subscription<traj_utils::msg::SnakeYaw>(
+      "planning/snake_yaw",
+      10,
+      snakeyawCallback);
 
   pos_cmd_pub = node->create_publisher<quadrotor_msgs::msg::PositionCommand>(
       "/position_cmd",

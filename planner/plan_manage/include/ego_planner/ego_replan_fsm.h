@@ -20,6 +20,8 @@
 #include "traj_utils/msg/data_disp.hpp"
 #include "ego_planner/planner_manager.h"
 #include "traj_utils/planning_visualization.h"
+#include <traj_utils/srv/vel_acc_cmd.hpp>
+#include <traj_utils/srv/set_error_threshold.hpp>
 
 using std::vector;
 
@@ -63,6 +65,7 @@ namespace ego_planner
     double emergency_time_;
     bool flag_realworld_experiment_;
     bool enable_fail_safe_;
+    float pos_error_threshold_;
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
@@ -97,6 +100,9 @@ namespace ego_planner
     rclcpp::Publisher<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_pub_;
     rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_pub_;
 
+    rclcpp::Service<traj_utils::srv::VelAccCmd>::SharedPtr set_velocity_acceleration_service_;
+    rclcpp::Service<traj_utils::srv::SetErrorThreshold>::SharedPtr set_error_threshold_service_;
+
     /* helper functions */
     bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj); // front-end and back-end method
     bool callEmergencyStop(Eigen::Vector3d stop_pos);                          // front-end and back-end method
@@ -113,6 +119,10 @@ namespace ego_planner
     void getLocalTarget();
 
     /* ROS functions */
+    void velAccCmdCallback(const std::shared_ptr<traj_utils::srv::VelAccCmd::Request> request,
+                          std::shared_ptr<traj_utils::srv::VelAccCmd::Response> response);
+    void setErrorThresholdCallback(const std::shared_ptr<traj_utils::srv::SetErrorThreshold::Request> request,
+                          std::shared_ptr<traj_utils::srv::SetErrorThreshold::Response> response);
     void execFSMCallback();
     void checkCollisionCallback();
     void waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);

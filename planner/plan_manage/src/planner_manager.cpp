@@ -46,6 +46,19 @@ namespace ego_planner
 
     visualization_ = vis;
   }
+  
+  void EGOPlannerManager::setMaxVelAcc(float max_vel, float max_acc)
+  {
+    bspline_optimizer_->setBsplineMaxVelAcc(max_vel, max_acc);
+    if (max_vel != 0.0)    
+    {
+      pp_.max_vel_ = max_vel;
+    }
+    if (max_acc != 0.0)    
+    {
+      pp_.max_acc_ = max_acc;
+    }
+  }
 
   bool EGOPlannerManager::reboundReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel,
                                         Eigen::Vector3d start_acc, Eigen::Vector3d local_target_pt,
@@ -135,12 +148,19 @@ namespace ego_planner
             last_pt = pt;
             point_set.push_back(pt);
           }
+          
         } while (flag_too_far || point_set.size() < 7); // To make sure the initial path has enough points.
-        t -= ts;
+        // Enure that last point is close enough to the target point 
+        if ((point_set.back() - local_target_pt).norm() > 1e-4)
+        {
+          point_set.push_back(local_target_pt);
+        }
+
+        // Use the true end time for derivatives
         start_end_derivatives.push_back(gl_traj.evaluateVel(0));
         start_end_derivatives.push_back(local_target_vel);
         start_end_derivatives.push_back(gl_traj.evaluateAcc(0));
-        start_end_derivatives.push_back(gl_traj.evaluateAcc(t));
+        start_end_derivatives.push_back(gl_traj.evaluateAcc(time));
       }
       else // Initial path generated from previous trajectory.
       {
@@ -188,25 +208,80 @@ namespace ego_planner
         double sample_length = 0;
         double cps_dist = pp_.ctrl_pt_dist * 1.5; // cps_dist will be divided by 1.5 in the next
         size_t id = 0;
-        do
-        {
-          cps_dist /= 1.5;
-          point_set.clear();
-          sample_length = 0;
-          id = 0;
-          while ((id <= pseudo_arc_length.size() - 2) && sample_length <= pseudo_arc_length.back())
-          {
-            if (sample_length >= pseudo_arc_length[id] && sample_length < pseudo_arc_length[id + 1])
-            {
-              point_set.push_back((sample_length - pseudo_arc_length[id]) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id + 1] +
-                                  (pseudo_arc_length[id + 1] - sample_length) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id]);
-              sample_length += cps_dist;
-            }
-            else
-              id++;
+        
+        point_set.clear();
+
+        // 1) Try to use previous trajectory if it is valid
+        bool used_prev_traj = false;
+        if (pseudo_arc_length.size() >= 2) {
+          double total_length = pseudo_arc_length.back();
+
+          if (std::isfinite(total_length) && total_length > 1e-3) {
+            // --- your sampling loop with a safety cap ---
+            double sample_length = 0.0;
+            double cps_dist = pp_.ctrl_pt_dist * 1.5;
+            size_t id = 0;
+
+            int outer_iter = 0;
+            do {
+              if (++outer_iter > 30) {  // safety to avoid hanging forever
+                std::cout << "Sampling loop did not converge, break.\n";
+                break;
+              }
+
+              cps_dist /= 1.5;
+              point_set.clear();
+              sample_length = 0;
+              id = 0;
+              while ((id <= pseudo_arc_length.size() - 2) &&
+                    sample_length <= pseudo_arc_length.back()) {
+
+                if (sample_length >= pseudo_arc_length[id] &&
+                    sample_length <  pseudo_arc_length[id + 1]) {
+                  point_set.push_back(
+                      (sample_length - pseudo_arc_length[id]) /
+                      (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id + 1] +
+                      (pseudo_arc_length[id + 1] - sample_length) /
+                      (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id]);
+                  sample_length += cps_dist;
+                } 
+                else 
+                {
+                  id++;
+                }
+              }
+              point_set.push_back(local_target_pt);
+            } while (point_set.size() < 7); // If the start point is very close to end point, this will help
+
+            if (!point_set.empty())
+              used_prev_traj = true;
           }
-          point_set.push_back(local_target_pt);
-        } while (point_set.size() < 7); // If the start point is very close to end point, this will help
+        }
+
+        // 2) Fallback: straight-line initial path if previous trajectory is unusable
+        if (!used_prev_traj) {
+          std::cout << "[B-spline init] using fallback straight-line path.\n";
+
+          Eigen::Vector3d start_pt = local_data_.position_traj_.evaluateDeBoorT(t_cur);
+          Eigen::Vector3d end_pt   = local_target_pt;
+
+          double dist = (end_pt - start_pt).norm();
+          // Uniform Bspline planner needs at least 4 control points
+          int num_pts = std::max(4, int(dist / pp_.ctrl_pt_dist) + 1);
+
+          point_set.clear();
+          for (int i = 0; i < num_pts; ++i) {
+            double alpha = (num_pts == 1) ? 0.0 : double(i) / double(num_pts - 1);
+            point_set.push_back(start_pt + alpha * (end_pt - start_pt));
+          }
+        }
+
+        // 3) Final safety check before parameterization
+        if (point_set.size() < 4) {
+          std::cout << "[B-spline] point_set too small (" << point_set.size()
+                    << "), aborting.\n";
+          return false;  // or force another high-level replan
+        }
 
         start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(t_cur));
         start_end_derivatives.push_back(local_target_vel);
@@ -238,7 +313,6 @@ namespace ego_planner
 
     if (pp_.use_distinctive_trajs)
     {
-      // cout << "enter" << endl;
       std::vector<ControlPoints> trajs = bspline_optimizer_->distinctiveTrajs(segments);
       cout << "\033[1;33m"
            << "multi-trajs=" << trajs.size() << "\033[1;0m" << endl;

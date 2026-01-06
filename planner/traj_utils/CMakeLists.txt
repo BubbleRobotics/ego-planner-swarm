@@ -27,7 +27,9 @@ rosidl_generate_interfaces(traj_utils
   "msg/Bspline.msg"
   "msg/DataDisp.msg"
   "msg/MultiBsplines.msg"
-
+  "msg/SnakeYaw.msg"
+  "srv/VelAccCmd.srv"
+  "srv/SetErrorThreshold.srv"
   DEPENDENCIES std_msgs geometry_msgs rclcpp builtin_interfaces
 )
 

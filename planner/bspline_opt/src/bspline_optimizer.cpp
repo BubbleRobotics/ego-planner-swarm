@@ -33,6 +33,16 @@ namespace ego_planner
     node_->get_parameter("optimization/order", order_);
   }
 
+  void BsplineOptimizer::setBsplineMaxVelAcc(float max_vel, float max_acc)
+  {
+    if (max_vel != 0.0){
+      max_vel_ = max_vel;
+    }
+    if (max_acc != 0.0){
+      max_acc_ = max_acc;
+    }
+  }
+
   void BsplineOptimizer::setEnvironment(const GridMap::Ptr &map)
   {
     this->grid_map_ = map;
