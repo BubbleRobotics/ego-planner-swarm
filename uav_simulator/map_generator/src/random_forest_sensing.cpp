@@ -483,7 +483,7 @@ int i = 0;
 void pubSensedPoints() {
     // Convert the point cloud to ROS2 message format and publish it.
     pcl::toROSMsg(cloudMap, globalMap_pcd);
-    globalMap_pcd.header.frame_id = "map";
+    globalMap_pcd.header.frame_id = "odom";
     _all_map_pub->publish(globalMap_pcd);
 
     return; // With this return statement, subsequent code will not be executed.
@@ -521,7 +521,7 @@ void pubSensedPoints() {
     localMap.is_dense = true;
 
     pcl::toROSMsg(localMap, localMap_pcd);
-    localMap_pcd.header.frame_id = "map";
+    localMap_pcd.header.frame_id = "odom";
     _local_map_pub->publish(localMap_pcd);
 }
 
@@ -562,7 +562,7 @@ void clickCallback(const geometry_msgs::msg::PoseStamped &msg) {
     clicked_cloud_.is_dense = true;
 
     pcl::toROSMsg(clicked_cloud_, localMap_pcd);
-    localMap_pcd.header.frame_id = "map";
+    localMap_pcd.header.frame_id = "odom";
     click_map_pub_->publish(localMap_pcd);
 
     cloudMap.width = cloudMap.points.size();

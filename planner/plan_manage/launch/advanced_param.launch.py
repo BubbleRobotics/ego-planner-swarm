@@ -43,7 +43,7 @@ def generate_launch_description():
     point4_y = LaunchConfiguration('point4_y', default=30.0)
     point4_z = LaunchConfiguration('point4_z', default=1.0)
 
-    # MANUAL_TARGET = 1, PRESET_TARGET = 2, REFENCE_PATH = 3
+    # MANUAL_TARGET = 1, PRESET_TARGET = 2
     flight_type = LaunchConfiguration('flight_type', default=2)
     use_distinctive_trajs = LaunchConfiguration('use_distinctive_trajs', default=True)
     
@@ -98,7 +98,7 @@ def generate_launch_description():
         name=['ego_planner_node'],
         output='screen',
         remappings=[
-            ('odom_world', ['mavros/odometry/out']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2/odometry']
+            ('odom_world', ['odometry/filtered_enu']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2/odometry']
             ('planning/bspline', ['ego_planner/bspline']),
             ('planning/data_display', ['ego_planner/data_display']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
@@ -110,7 +110,7 @@ def generate_launch_description():
             ('optimal_list', ['ego_plan_vis/optimal_list']),
             ('a_star_list', ['ego_plan_vis/a_star_list']),
             
-            ('grid_map/odom', ['mavros/odometry/out']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
+            ('grid_map/odom', ['odometry/filtered_enu']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
             ('grid_map/cloud', ['/camera_d455/depth/image_raw/points_map']), # TODO change remapping OLD: ['ego_', cloud_topic]
             ('grid_map/pose', ['ego_', camera_pose_topic]),
             ('grid_map/depth', ['ego_', depth_topic]),
@@ -120,7 +120,7 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time},
             {'fsm/flight_type': flight_type},
             {'fsm/thresh_replan_time': 1.0},
-            {'fsm/thresh_no_replan_meter': 0.2},
+            {'fsm/thresh_no_replan_meter': 0.05},
             {'fsm/planning_horizon': planning_horizon},
             {'fsm/planning_horizen_time': 3.0},
             {'fsm/emergency_time': 1.0},
@@ -148,9 +148,9 @@ def generate_launch_description():
             {'grid_map/map_size_x': map_size_x},
             {'grid_map/map_size_y': map_size_y},
             {'grid_map/map_size_z': map_size_z},
-            {'grid_map/local_update_range_x': 4.5},
-            {'grid_map/local_update_range_y': 4.5},
-            {'grid_map/local_update_range_z': 4.5},
+            {'grid_map/local_update_range_x': 5.0},
+            {'grid_map/local_update_range_y': 5.0},
+            {'grid_map/local_update_range_z': 5.0},
             {'grid_map/obstacles_inflation': 0.35},
             {'grid_map/local_map_margin': 10},
             {'grid_map/ground_height': -13.0},
@@ -180,7 +180,7 @@ def generate_launch_description():
             {'grid_map/visualization_truncate_height': 1.8},
             {'grid_map/show_occ_time': False},
             {'grid_map/pose_type': 1},
-            {'grid_map/frame_id': "map"},
+            {'grid_map/frame_id': "odom"},
             # planner manager
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},

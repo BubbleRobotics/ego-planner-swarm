@@ -72,7 +72,7 @@ void maps3d_callback(const multi_map_server::msg::MultiSparseMap3D::ConstPtr &ms
     }
     // Publish
     m.header.stamp = node_->get_clock()->now();
-    m.header.frame_id = string("/map");
+    m.header.frame_id = string("odom");
     pub2->publish(m);
 }
 

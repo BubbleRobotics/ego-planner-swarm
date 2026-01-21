@@ -165,7 +165,7 @@ void pubCameraPose()
 {
   geometry_msgs::msg::PoseStamped camera_pose;
   camera_pose.header = _odom.header;
-  camera_pose.header.frame_id = "map";  
+  camera_pose.header.frame_id = "odom";  
   camera_pose.pose.position.x = cam2world(0, 3);
   camera_pose.pose.position.y = cam2world(1, 3);
   camera_pose.pose.position.z = cam2world(2, 3);
@@ -298,7 +298,7 @@ void render_pcl_world()
     // Information format conversion
     sensor_msgs::msg::PointCloud2 local_map_pcl;
     pcl::toROSMsg(localMap, local_map_pcl);
-    local_map_pcl.header.frame_id = "/map";
+    local_map_pcl.header.frame_id = "odom"; //TODO switch back if odom fails
     local_map_pcl.header.stamp = last_odom_stamp; // Use the current timestamp
 
     // Release point cloud

@@ -57,7 +57,7 @@ def generate_launch_description():
         name=['ego_odom_visualization'],
         output='screen',
         remappings=[
-            ('odom', ['mavros/odometry/out']),
+            ('odom', ['odometry/filtered_enu']),
             ('robot', ['ego_vis/robot']),
             ('path', ['ego_vis/path']),
             ('time_gap', ['ego_vis/time_gap']),

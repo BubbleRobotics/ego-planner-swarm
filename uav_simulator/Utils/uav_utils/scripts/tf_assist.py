@@ -158,7 +158,7 @@ if __name__ == "__main__":
             broadcast_tf = node.declare_parameter(f'{prefix}broadcast_tf', False).value
             body_frame_id = node.declare_parameter(f'{prefix}body_frame_id', 'body').value
             intermediate_frame_id = node.declare_parameter(f'{prefix}intermediate_frame_id', 'intermediate').value
-            world_frame_id = node.declare_parameter(f'{prefix}world_frame_id', 'map').value
+            world_frame_id = node.declare_parameter(f'{prefix}world_frame_id', 'odom').value
 
             # 初始化 OdometryConverter
             converter = OdometryConverter(

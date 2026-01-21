@@ -136,7 +136,7 @@ private:
 
     void publish_waypoints()
     {
-        waypoints.header.frame_id = std::string("map");
+        waypoints.header.frame_id = std::string("odom");
         waypoints.header.stamp = this->get_clock()->now();
         pub1->publish(waypoints);
         geometry_msgs::msg::PoseStamped init_pose;
@@ -150,7 +150,7 @@ private:
     {
         nav_msgs::msg::Path wp_vis = waypoints;
         geometry_msgs::msg::PoseArray poseArray;
-        poseArray.header.frame_id = std::string("map");
+        poseArray.header.frame_id = std::string("odom");
         poseArray.header.stamp = this->get_clock()->now();
 
         {

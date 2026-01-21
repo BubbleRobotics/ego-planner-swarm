@@ -229,7 +229,7 @@ void visualizeObj(int id)
 
   /* ---------- rviz ---------- */
   visualization_msgs::msg::Marker mk;
-  mk.header.frame_id = "map";
+  mk.header.frame_id = "odom";
   mk.header.stamp = rclcpp::Clock().now();
   mk.type = visualization_msgs::msg::Marker::CUBE;
   mk.action = visualization_msgs::msg::Marker::ADD;
@@ -249,7 +249,7 @@ void visualizeObj(int id)
 
   /* ---------- pose ---------- */
   geometry_msgs::msg::PoseStamped pose;
-  pose.header.frame_id = "map";
+  pose.header.frame_id = "odom";
   // pose.header.seq = id;
   pose.pose.position.x = pos(0), pose.pose.position.y = pos(1), pose.pose.position.z = pos(2);
   pose.pose.orientation.w = 1.0;

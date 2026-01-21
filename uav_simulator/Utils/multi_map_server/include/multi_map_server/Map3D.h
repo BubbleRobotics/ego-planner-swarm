@@ -360,7 +360,7 @@ public:
     {
         // Basic map info
         msg.header.stamp = rclcpp::Clock().now();
-        msg.header.frame_id = string("/map");
+        msg.header.frame_id = string("odom");
         msg.info.map_load_time = rclcpp::Clock().now();
         msg.info.resolution = resolution;
         msg.info.origin.position.x = originX;

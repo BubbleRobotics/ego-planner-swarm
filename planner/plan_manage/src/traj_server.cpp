@@ -6,8 +6,24 @@
 #include "traj_utils/msg/snake_yaw.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include <rclcpp/rclcpp.hpp>
+#include "geometry_msgs/msg/twist.hpp"
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2/exceptions.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr pos_cmd_pub;
+rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr body_vel_pub;
+rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub;
+rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr bspline_sub;
+rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub;
+
+
+std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+
+std::atomic<bool> have_odom{false};
 
 quadrotor_msgs::msg::PositionCommand cmd;
 double pos_gain[3] = {0, 0, 0};
@@ -28,9 +44,95 @@ bool use_snake_yaw = false;
 double snake_yaw = 0.0;
 rclcpp::Node::SharedPtr node_;
 
+Eigen::Vector3d odom_pos_, odom_vel_, odom_ang_vel_;
+Eigen::Quaterniond odom_orient_;
+
+static inline double wrapToPi(double a)
+{
+  // returns in [-pi, pi]
+  a = std::fmod(a + M_PI, 2.0 * M_PI);
+  if (a < 0) a += 2.0 * M_PI;
+  return a - M_PI;
+}
+
+static inline double angleDiff(double target, double current)
+{
+  // shortest signed difference target-current in [-pi,pi]
+  return wrapToPi(target - current);
+}
 
 
-void bsplineCallback(traj_utils::msg::Bspline::ConstPtr msg)
+static inline Eigen::Vector3d rotate_frame1_frame2(
+    const geometry_msgs::msg::TransformStamped& T_f1_f2,
+    const Eigen::Vector3d& v_f1)
+{
+  const auto& q = T_f1_f2.transform.rotation;
+
+  tf2::Quaternion q_world_body(q.x, q.y, q.z, q.w);
+
+  // TF gives orientation of child(body) in parent(world).
+  // To express a world vector in body coordinates, apply inverse rotation.
+  tf2::Quaternion q_body_world = q_world_body.inverse();
+  tf2::Matrix3x3 R_body_world(q_body_world);
+
+  tf2::Vector3 vf1(v_f1.x(), v_f1.y(), v_f1.z());
+  tf2::Vector3 vf2 = R_body_world * vf1;
+
+  return Eigen::Vector3d(vf2.x(), vf2.y(), vf2.z());
+}
+
+void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
+  {
+
+    const std::string velocity_frame = "base_link";      
+    const std::string world_frame  = "odom";
+    geometry_msgs::msg::TransformStamped T_vw;
+    try {
+      // use latest transform
+      T_vw = tf_buffer->lookupTransform(velocity_frame, world_frame, tf2::TimePointZero);
+    } catch (const tf2::TransformException& ex) {
+      RCLCPP_WARN(node_->get_logger(), "TF lookup failed: %s", ex.what());
+      return;
+    }
+
+    Eigen::Vector3d odom_vel_base_link;
+    // Child frame (base_link)
+    odom_vel_base_link(0) = msg->twist.twist.linear.x;
+    odom_vel_base_link(1) = msg->twist.twist.linear.y;
+    odom_vel_base_link(2) = msg->twist.twist.linear.z;
+
+    odom_vel_ = rotate_frame1_frame2(T_vw, odom_vel_base_link);
+
+    // map frame
+    odom_pos_(0) = msg->pose.pose.position.x;
+    odom_pos_(1) = msg->pose.pose.position.y;
+    odom_pos_(2) = msg->pose.pose.position.z;
+
+    // Child frame (base_link)
+    odom_vel_(0) = msg->twist.twist.linear.x;
+    odom_vel_(1) = msg->twist.twist.linear.y;
+    odom_vel_(2) = msg->twist.twist.linear.z;
+
+    odom_orient_.w() = msg->pose.pose.orientation.w;
+    odom_orient_.x() = msg->pose.pose.orientation.x;
+    odom_orient_.y() = msg->pose.pose.orientation.y;
+    odom_orient_.z() = msg->pose.pose.orientation.z;
+
+    Eigen::Vector3d odom_ang_vel_base_link;
+    // Child frame (base_link)
+    odom_ang_vel_base_link(0) = msg->twist.twist.angular.x;
+    odom_ang_vel_base_link(1) = msg->twist.twist.angular.y;
+    odom_ang_vel_base_link(2) = msg->twist.twist.angular.z;
+
+    odom_ang_vel_ = rotate_frame1_frame2(T_vw, odom_ang_vel_base_link);
+
+    have_odom.store(true);
+
+  }
+
+
+
+void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
 {
   // parse pos traj
 
@@ -171,7 +273,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, doub
   return yaw_yawdot;
 }
 
-void snakeyawCallback(traj_utils::msg::SnakeYaw::ConstPtr msg)
+void snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg)
 {
   use_snake_yaw = msg->use_snake_yaw;
   snake_yaw = msg->snake_yaw;
@@ -182,7 +284,8 @@ void cmdCallback()
   /* no publishing before receive traj_ */
   if (!receive_traj_)
     return;
-
+  if (!have_odom.load())
+    return;
   // unified time source
   //rclcpp::Clock clock(RCL_ROS_TIME);  
   rclcpp::Time time_now = node_->get_clock()->now();
@@ -231,7 +334,7 @@ void cmdCallback()
   time_last = time_now;
 
   cmd.header.stamp = time_now;
-  cmd.header.frame_id = "map";
+  cmd.header.frame_id = "odom";
   cmd.trajectory_flag = quadrotor_msgs::msg::PositionCommand::TRAJECTORY_STATUS_READY;
   cmd.trajectory_id = traj_id_;
 
@@ -250,24 +353,121 @@ void cmdCallback()
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
 
-
+  pos_cmd_pub->publish(cmd);
   last_yaw_ = cmd.yaw;
 
+  Eigen::Vector3d p_des = pos;
+  Eigen::Vector3d v_des = vel;
+  Eigen::Vector3d euler_des;
+  Eigen::Vector3d w_des;
+  euler_des(2) = cmd.yaw;
+  w_des(2) = cmd.yaw_dot;
 
-  pos_cmd_pub->publish(cmd);
+  // position in odom frame
+  Eigen::Vector3d p_meas = odom_pos_;
+  // velocity in odom frame
+  Eigen::Vector3d v_meas = odom_vel_;
+  // orientation in odom frame
+  Eigen::Quaterniond q_meas = odom_orient_;
+  // angular velocity in odom frame
+  Eigen::Vector3d w_meas = odom_ang_vel_;
+
+  tf2::Quaternion q(
+    q_meas.x(),
+    q_meas.y(),
+    q_meas.z(),
+    q_meas.w()
+  );
+
+  
+  double roll_meas, pitch_meas, yaw_meas;
+  tf2::Matrix3x3(q).getRPY(roll_meas, pitch_meas, yaw_meas);
+  Eigen::Vector3d euler_meas(roll_meas, pitch_meas, yaw_meas);
+
+  Eigen::Vector3d Kp(1.5, 1.5, 2.0);
+  Eigen::Vector3d Kv(0.5, 0.5, 0.8);
+
+  Eigen::Vector3d Kp_yaw(1.5, 1.5, 2.0);
+  Eigen::Vector3d Kv_yaw(0.5, 0.5, 0.8);
+
+
+  Eigen::Vector3d v_cmd_world = v_des
+    + Kp.cwiseProduct(p_des - p_meas)
+    + Kv.cwiseProduct(v_des - v_meas);
+
+  double yaw_des  = euler_des(2);
+  yaw_meas = euler_meas(2);
+
+  double yaw_err = angleDiff(yaw_des, yaw_meas);
+
+  // If you want yaw-rate feedback, use measured yaw rate (in the same frame as w_des!)
+  double yaw_rate_des  = w_des(2);
+  double yaw_rate_meas = w_meas(2);  // make sure this corresponds to yaw rate about vertical in your chosen frame
+
+  Eigen::Vector3d w_cmd_world = w_des;
+
+  // only yaw control here (leave x/y as you already force them to 0 later)
+  w_cmd_world(2) = yaw_rate_des
+                + Kp(2) * yaw_err
+                + Kv(2) * (yaw_rate_des - yaw_rate_meas);
+  
+  
+  const std::string world_frame = "odom";      
+  // The desired final frame of the velocity (to be fed to the low level controller)
+  const std::string body_frame  = "base_link_fsd";
+  geometry_msgs::msg::TransformStamped T_wb;
+  try {
+    // use latest transform
+    T_wb = tf_buffer->lookupTransform(world_frame, body_frame, tf2::TimePointZero);
+  } catch (const tf2::TransformException& ex) {
+    RCLCPP_WARN(node_->get_logger(), "TF lookup failed: %s", ex.what());
+    return;
+  }
+
+  Eigen::Vector3d v_cmd_base = rotate_frame1_frame2(T_wb, v_cmd_world);
+  Eigen::Vector3d w_cmd_base = rotate_frame1_frame2(T_wb, w_cmd_world);
+  /*geometry_msgs::msg::TwistStamped body_cmd;
+  body_cmd.header.stamp = time_now;
+  body_cmd.header.frame_id = body_frame;*/
+
+  geometry_msgs::msg::Twist body_cmd;
+  body_cmd.linear.x = v_cmd_base.x();
+  body_cmd.linear.y = v_cmd_base.y();
+  body_cmd.linear.z = v_cmd_base.z();
+
+  body_cmd.angular.x = 0.0;//w_cmd_base.x();
+  body_cmd.angular.y = 0.0;//w_cmd_base.y();
+  body_cmd.angular.z = w_cmd_base.z();
+
+  body_vel_pub->publish(body_cmd);
+
 }
+
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("traj_server");
   node_ = node;
-  auto bspline_sub = node->create_subscription<traj_utils::msg::Bspline>(
+  tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+
+  body_vel_pub = node->create_publisher<geometry_msgs::msg::Twist>(
+    "/cmd_vel_body", 50);
+
+
+  odometry_sub = node_->create_subscription<nav_msgs::msg::Odometry>(
+        "odometry/filtered_enu",
+        10,
+        odometryCallback
+        );
+
+  bspline_sub = node->create_subscription<traj_utils::msg::Bspline>(
       "planning/bspline",
       10,
       bsplineCallback);
 
-  auto snake_yaw_sub = node->create_subscription<traj_utils::msg::SnakeYaw>(
+  snake_yaw_sub = node->create_subscription<traj_utils::msg::SnakeYaw>(
       "planning/snake_yaw",
       10,
       snakeyawCallback);

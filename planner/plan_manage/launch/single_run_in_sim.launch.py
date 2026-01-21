@@ -142,7 +142,7 @@ def generate_launch_description():
         name=['ego_traj_server'],
         output='screen',
         remappings=[
-            ('position_cmd', ['ego_planner/pos_cmd']),
+            ('cmd_vel_body', ['integral_sliding_mode_controller/reference']),
             ('planning/bspline', ['ego_planner/bspline'])
         ],
         parameters=[

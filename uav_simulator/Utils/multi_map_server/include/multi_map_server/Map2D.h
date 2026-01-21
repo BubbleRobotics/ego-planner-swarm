@@ -246,7 +246,7 @@ public:
     {
         map.header.stamp = rclcpp::Clock().now();
         map.info.map_load_time = rclcpp::Clock().now();
-        map.header.frame_id = string("/map");
+        map.header.frame_id = string("odom");
         updated = false;
         return map;
     }

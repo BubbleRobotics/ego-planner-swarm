@@ -77,6 +77,18 @@ namespace ego_planner
           this->odometryCallback(msg);
         });
 
+    rviz_clicked_sub_ = node_->create_subscription<geometry_msgs::msg::PointStamped>(
+        "/ego_planner/clicked_point",
+        1,
+        [this](const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
+        {
+          this->pointClickedCallback(msg);
+        });
+      
+    new_goal_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/ego_planner/move_base_simple/goal",
+        10);
+
     set_velocity_acceleration_service_ = node_->create_service<traj_utils::srv::VelAccCmd>(
         "ego_planner/set_vel_acc_cmd",
         std::bind(&EGOReplanFSM::velAccCmdCallback, this,
@@ -268,7 +280,7 @@ namespace ego_planner
   {
     if (-0.1 < msg->pose.position.z)
       {
-      cout << "Ignoring waypoint (above water level)!" << endl;
+      cout << "Ignoring waypoint (above water surface level)!" << endl;
       return;
       }
 
@@ -281,10 +293,20 @@ namespace ego_planner
     planNextWaypoint(end_wp);
   }
 
+  void EGOReplanFSM::pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
+  {
+    geometry_msgs::msg::PoseStamped new_goal_;
+    new_goal_.pose.position.x = msg->point.x;
+    new_goal_.pose.position.y = msg->point.y;
+    new_goal_.pose.position.z = -2; // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
+    cout << "New Point Clicked, sent Goal Point!" << endl;
+
+    new_goal_pub_->publish(new_goal_);
+  }
+
   void EGOReplanFSM::odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
   {
-    /* TODO NED  
-    If Odometry is given in ENU */
+    // Odometry given in map frame (ENU)
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
@@ -292,15 +314,6 @@ namespace ego_planner
     odom_vel_(0) = msg->twist.twist.linear.x;
     odom_vel_(1) = msg->twist.twist.linear.y;
     odom_vel_(2) = msg->twist.twist.linear.z;
-
-    /* Our Odometry is given in NED
-    odom_pos_(0) = msg->pose.pose.position.y;
-    odom_pos_(1) = msg->pose.pose.position.x;
-    odom_pos_(2) = -msg->pose.pose.position.z;
-
-    odom_vel_(0) = msg->twist.twist.linear.x;
-    odom_vel_(1) = msg->twist.twist.linear.y;
-    odom_vel_(2) = msg->twist.twist.linear.z;*/
 
     // odom_acc_ = estimateAcc( msg );
 

@@ -158,7 +158,7 @@ void renderSensedPoints(/*const rclcpp::TimerBase event*/) {
   _local_map.is_dense = true;
 
   pcl::toROSMsg(_local_map, _local_map_pcd);
-  _local_map_pcd.header.frame_id = "map";
+  _local_map_pcd.header.frame_id = "odom";
 
   pub_cloud->publish(_local_map_pcd);
 }
