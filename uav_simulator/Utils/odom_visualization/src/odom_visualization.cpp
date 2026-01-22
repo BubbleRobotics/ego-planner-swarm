@@ -40,6 +40,7 @@ rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr covVelPub;
 rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr trajPub;
 rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr sensorPub;
 rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr meshPub;
+rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr meshPub2;
 rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr heightPub;
 
 rclcpp::Node::SharedPtr node_;
@@ -370,12 +371,13 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     heightPub->publish(heightROS);
 
     // Mesh model
-    meshROS.header.frame_id = _frame_id;
+    meshROS.header.frame_id = msg->header.frame_id;
     meshROS.header.stamp = msg->header.stamp;
-    meshROS.ns = "dae";
+    meshROS.ns = "obj";
     meshROS.id = 0;
     meshROS.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
     meshROS.action = visualization_msgs::msg::Marker::ADD;
+
     meshROS.pose.position.x = msg->pose.pose.position.x;
     meshROS.pose.position.y = msg->pose.pose.position.y;
     meshROS.pose.position.z = msg->pose.pose.position.z;
@@ -383,12 +385,12 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     q(1) = msg->pose.pose.orientation.x;
     q(2) = msg->pose.pose.orientation.y;
     q(3) = msg->pose.pose.orientation.z;
-    if (cross_config)
-    {
-        colvec ypr = R_to_ypr(quaternion_to_R(q));
-        ypr(0) += 45.0 * PI / 180.0;
-        q = R_to_quaternion(ypr_to_R(ypr));
-    }
+
+
+    colvec ypr = R_to_ypr(quaternion_to_R(q));
+    ypr(2) -= 90.0 * PI / 180.0;
+    q = R_to_quaternion(ypr_to_R(ypr));
+
     meshROS.pose.orientation.w = q(0);
     meshROS.pose.orientation.x = q(1);
     meshROS.pose.orientation.y = q(2);
@@ -536,7 +538,7 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("odom_visualization");
     node_ = node;
-    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/bluerov2.dae");// TODO use BlueROV here 
+    node->declare_parameter("mesh_resource", "package://odom_visualization/meshes/model.obj");
     node->declare_parameter("color/r", 1.0);
     node->declare_parameter("color/g", 0.0);
     node->declare_parameter("color/b", 0.0);
@@ -588,6 +590,7 @@ int main(int argc, char **argv)
     trajPub = node->create_publisher<visualization_msgs::msg::Marker>("trajectory", 100);
     sensorPub = node->create_publisher<visualization_msgs::msg::Marker>("sensor", 100);
     meshPub = node->create_publisher<visualization_msgs::msg::Marker>("robot", 100);
+    meshPub2 = node->create_publisher<visualization_msgs::msg::Marker>("robot2", 100);
     heightPub = node->create_publisher<sensor_msgs::msg::Range>("height", 100);
 
     timePub = node->create_publisher<std_msgs::msg::Float64>("time_gap", 100);

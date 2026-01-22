@@ -111,7 +111,7 @@ def generate_launch_description():
             ('a_star_list', ['ego_plan_vis/a_star_list']),
             
             ('grid_map/odom', ['odometry/filtered_enu']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
-            ('grid_map/cloud', ['/camera_d455/depth/image_raw/points_map']), # TODO change remapping OLD: ['ego_', cloud_topic]
+            ('grid_map/cloud', ['/stereo/point_cloud']), # TODO change remapping OLD: ['ego_', cloud_topic]
             ('grid_map/pose', ['ego_', camera_pose_topic]),
             ('grid_map/depth', ['ego_', depth_topic]),
             ('grid_map/occupancy_inflate', ['ego_grid/grid_map/occupancy_inflate'])

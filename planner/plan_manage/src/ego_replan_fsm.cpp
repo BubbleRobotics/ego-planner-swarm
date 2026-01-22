@@ -296,6 +296,8 @@ namespace ego_planner
   void EGOReplanFSM::pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
   {
     geometry_msgs::msg::PoseStamped new_goal_;
+    new_goal_.header.stamp = node_->get_clock()->now();
+    new_goal_.header.frame_id = msg->header.frame_id;
     new_goal_.pose.position.x = msg->point.x;
     new_goal_.pose.position.y = msg->point.y;
     new_goal_.pose.position.z = -2; // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this

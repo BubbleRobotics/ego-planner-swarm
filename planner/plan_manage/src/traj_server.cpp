@@ -12,6 +12,24 @@
 #include <tf2/exceptions.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <mutex>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
+
+// Gain storage (shared between timer + param callback)
+std::mutex gains_mtx;
+Eigen::Vector3d Kp_g(0.4, 0.4, 0.4);
+Eigen::Vector3d Kd_g(0.0, 0.0, 0.0);
+Eigen::Vector3d Ki_g(0.1, 0.1, 0.1);
+
+Eigen::Vector3d Kp_yaw_g(0.4, 0.4, 0.4);
+Eigen::Vector3d Kd_yaw_g(0.0, 0.0, 0.0);
+Eigen::Vector3d Ki_yaw_g(0.1, 0.1, 0.1);
+
+Eigen::Vector3d v_max(0.9, 0.9, 0.9);// TODO tune, or make tunable
+Eigen::Vector3d v_min = -v_max;
+
+
+rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr gains_cb_handle;
 
 rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr pos_cmd_pub;
 rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr body_vel_pub;
@@ -19,7 +37,14 @@ rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub;
 rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr bspline_sub;
 rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub;
 
-
+bool derivative_ready = false;
+Eigen::Vector3d last_p_error;
+Eigen::Vector3d last_last_p_error;
+Eigen::Vector3d p_error_deriv_approx;
+Eigen::Vector3d integrated_error;
+double last_yaw_error;
+double last_last_yaw_error;
+double integrated_yaw_error;
 std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 std::shared_ptr<tf2_ros::TransformListener> tf_listener;
 
@@ -62,34 +87,61 @@ static inline double angleDiff(double target, double current)
 }
 
 
-static inline Eigen::Vector3d rotate_frame1_frame2(
-    const geometry_msgs::msg::TransformStamped& T_f1_f2,
-    const Eigen::Vector3d& v_f1)
+static inline Eigen::Vector3d rotate_target_source(
+    const geometry_msgs::msg::TransformStamped& T_target_source,
+    const Eigen::Vector3d& v_source)
 {
-  const auto& q = T_f1_f2.transform.rotation;
+  const auto& q = T_target_source.transform.rotation;
 
-  tf2::Quaternion q_world_body(q.x, q.y, q.z, q.w);
+  tf2::Quaternion q_T_target_source(q.x, q.y, q.z, q.w);
 
-  // TF gives orientation of child(body) in parent(world).
-  // To express a world vector in body coordinates, apply inverse rotation.
-  tf2::Quaternion q_body_world = q_world_body.inverse();
-  tf2::Matrix3x3 R_body_world(q_body_world);
+  tf2::Matrix3x3 R_T_target_source(q_T_target_source);
 
-  tf2::Vector3 vf1(v_f1.x(), v_f1.y(), v_f1.z());
-  tf2::Vector3 vf2 = R_body_world * vf1;
+  tf2::Vector3 vsource(v_source.x(), v_source.y(), v_source.z());
+  tf2::Vector3 vtarget = R_T_target_source * vsource;
 
-  return Eigen::Vector3d(vf2.x(), vf2.y(), vf2.z());
+  return Eigen::Vector3d(vtarget.x(), vtarget.y(), vtarget.z());
 }
+
+static void load_gains_from_params(const rclcpp::Node::SharedPtr& node)
+{
+  std::lock_guard<std::mutex> lk(gains_mtx);
+
+  Kp_g.x() = node->get_parameter("gains.kp.x").as_double();
+  Kp_g.y() = node->get_parameter("gains.kp.y").as_double();
+  Kp_g.z() = node->get_parameter("gains.kp.z").as_double();
+
+  Kd_g.x() = node->get_parameter("gains.kd.x").as_double();
+  Kd_g.y() = node->get_parameter("gains.kd.y").as_double();
+  Kd_g.z() = node->get_parameter("gains.kd.z").as_double();
+
+  Ki_g.x() = node->get_parameter("gains.ki.x").as_double();
+  Ki_g.y() = node->get_parameter("gains.ki.y").as_double();
+  Ki_g.z() = node->get_parameter("gains.ki.z").as_double();
+
+  Kp_yaw_g.x() = node->get_parameter("gains.kp_yaw.x").as_double();
+  Kp_yaw_g.y() = node->get_parameter("gains.kp_yaw.y").as_double();
+  Kp_yaw_g.z() = node->get_parameter("gains.kp_yaw.z").as_double();
+
+  Kd_yaw_g.x() = node->get_parameter("gains.kd_yaw.x").as_double();
+  Kd_yaw_g.y() = node->get_parameter("gains.kd_yaw.y").as_double();
+  Kd_yaw_g.z() = node->get_parameter("gains.kd_yaw.z").as_double();
+
+  Ki_yaw_g.x() = node->get_parameter("gains.ki_yaw.x").as_double();
+  Ki_yaw_g.y() = node->get_parameter("gains.ki_yaw.y").as_double();
+  Ki_yaw_g.z() = node->get_parameter("gains.ki_yaw.z").as_double();
+}
+
 
 void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
 
-    const std::string velocity_frame = "base_link";      
-    const std::string world_frame  = "odom";
-    geometry_msgs::msg::TransformStamped T_vw;
+    static const std::string velocity_frame = "base_link";      
+    static const std::string world_frame  = "odom";
+    geometry_msgs::msg::TransformStamped T_wb;
     try {
       // use latest transform
-      T_vw = tf_buffer->lookupTransform(velocity_frame, world_frame, tf2::TimePointZero);
+      T_wb = tf_buffer->lookupTransform(world_frame, velocity_frame, tf2::TimePointZero);
     } catch (const tf2::TransformException& ex) {
       RCLCPP_WARN(node_->get_logger(), "TF lookup failed: %s", ex.what());
       return;
@@ -101,17 +153,13 @@ void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     odom_vel_base_link(1) = msg->twist.twist.linear.y;
     odom_vel_base_link(2) = msg->twist.twist.linear.z;
 
-    odom_vel_ = rotate_frame1_frame2(T_vw, odom_vel_base_link);
+    odom_vel_ = rotate_target_source(T_wb, odom_vel_base_link);
 
     // map frame
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
 
-    // Child frame (base_link)
-    odom_vel_(0) = msg->twist.twist.linear.x;
-    odom_vel_(1) = msg->twist.twist.linear.y;
-    odom_vel_(2) = msg->twist.twist.linear.z;
 
     odom_orient_.w() = msg->pose.pose.orientation.w;
     odom_orient_.x() = msg->pose.pose.orientation.x;
@@ -124,7 +172,7 @@ void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     odom_ang_vel_base_link(1) = msg->twist.twist.angular.y;
     odom_ang_vel_base_link(2) = msg->twist.twist.angular.z;
 
-    odom_ang_vel_ = rotate_frame1_frame2(T_vw, odom_ang_vel_base_link);
+    odom_ang_vel_ = rotate_target_source(T_wb, odom_ang_vel_base_link);
 
     have_odom.store(true);
 
@@ -135,6 +183,16 @@ void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
 void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
 {
   // parse pos traj
+  // reset the controller
+  derivative_ready = false;
+  last_p_error.setZero();
+  last_last_p_error.setZero();
+  p_error_deriv_approx.setZero();
+  integrated_error.setZero();
+  last_yaw_error = 0.0;
+  last_last_yaw_error = 0.0;
+  integrated_yaw_error = 0.0;
+
 
   Eigen::MatrixXd pos_pts(3, msg->pos_pts.size());
 
@@ -384,22 +442,44 @@ void cmdCallback()
   tf2::Matrix3x3(q).getRPY(roll_meas, pitch_meas, yaw_meas);
   Eigen::Vector3d euler_meas(roll_meas, pitch_meas, yaw_meas);
 
-  Eigen::Vector3d Kp(1.5, 1.5, 2.0);
-  Eigen::Vector3d Kv(0.5, 0.5, 0.8);
+  Eigen::Vector3d Kp, Kd, Kp_yaw, Kd_yaw, Ki, Ki_yaw;
+  {
+    std::lock_guard<std::mutex> lk(gains_mtx);
+    Kp = Kp_g;
+    Kd = Kd_g;
+    Ki = Ki_g;
+    Kp_yaw = Kp_yaw_g;
+    Kd_yaw = Kd_yaw_g;
+    Ki_yaw = Ki_yaw_g;
+  }
 
-  Eigen::Vector3d Kp_yaw(1.5, 1.5, 2.0);
-  Eigen::Vector3d Kv_yaw(0.5, 0.5, 0.8);
-
+  Eigen::Vector3d p_error = p_des - p_meas;
+  // Second order approx of first derivative 
+  if (derivative_ready)
+  {
+      p_error_deriv_approx =
+          (- 3.0 * p_error
+           + 4.0 * last_p_error
+           - 1.0 * last_last_p_error ) / (2.0 * 0.01);
+  }
+  integrated_error += p_error*0.01;
 
   Eigen::Vector3d v_cmd_world = v_des
-    + Kp.cwiseProduct(p_des - p_meas)
-    + Kv.cwiseProduct(v_des - v_meas);
+    + Kp.cwiseProduct(p_error)
+    - Kd.cwiseProduct(p_error_deriv_approx)
+    + Ki.cwiseProduct(integrated_error);
+
+  last_last_p_error = last_p_error;
+  last_p_error = p_error;
+
+  if (!derivative_ready)
+      derivative_ready = true;
 
   double yaw_des  = euler_des(2);
   yaw_meas = euler_meas(2);
 
   double yaw_err = angleDiff(yaw_des, yaw_meas);
-
+  integrated_yaw_error += yaw_err;
   // If you want yaw-rate feedback, use measured yaw rate (in the same frame as w_des!)
   double yaw_rate_des  = w_des(2);
   double yaw_rate_meas = w_meas(2);  // make sure this corresponds to yaw rate about vertical in your chosen frame
@@ -408,33 +488,44 @@ void cmdCallback()
 
   // only yaw control here (leave x/y as you already force them to 0 later)
   w_cmd_world(2) = yaw_rate_des
-                + Kp(2) * yaw_err
-                + Kv(2) * (yaw_rate_des - yaw_rate_meas);
+                + Kp_yaw(2) * yaw_err
+                - Kd_yaw(2) * (last_yaw_error - yaw_err)/0.01
+                + Ki_yaw(2) * integrated_yaw_error;
   
-  
+  last_yaw_error = yaw_err;
+
+
   const std::string world_frame = "odom";      
   // The desired final frame of the velocity (to be fed to the low level controller)
   const std::string body_frame  = "base_link_fsd";
-  geometry_msgs::msg::TransformStamped T_wb;
+  geometry_msgs::msg::TransformStamped T_bw;
   try {
-    // use latest transform
-    T_wb = tf_buffer->lookupTransform(world_frame, body_frame, tf2::TimePointZero);
+      // use latest transform
+      if (!tf_buffer->canTransform(body_frame, world_frame, tf2::TimePointZero,
+                              tf2::durationFromSec(0.002))) {
+    return;
+    }
+    T_bw = tf_buffer->lookupTransform(body_frame, world_frame, tf2::TimePointZero);
   } catch (const tf2::TransformException& ex) {
     RCLCPP_WARN(node_->get_logger(), "TF lookup failed: %s", ex.what());
     return;
   }
 
-  Eigen::Vector3d v_cmd_base = rotate_frame1_frame2(T_wb, v_cmd_world);
-  Eigen::Vector3d w_cmd_base = rotate_frame1_frame2(T_wb, w_cmd_world);
+  
+  Eigen::Vector3d v_cmd_base = rotate_target_source(T_bw, v_cmd_world);
+  v_cmd_base = v_cmd_base.cwiseMax(v_min).cwiseMin(v_max);
+  Eigen::Vector3d w_cmd_base = rotate_target_source(T_bw, w_cmd_world);
   /*geometry_msgs::msg::TwistStamped body_cmd;
   body_cmd.header.stamp = time_now;
   body_cmd.header.frame_id = body_frame;*/
-
+  cout << "New ITER! P DES" << p_des << "V DES" << v_des << " | P MEAS" << p_meas << " | P ERR" << p_error << " | P DER" << p_error_deriv_approx << " | V WRL" << v_cmd_world << " | V BAS" << v_cmd_base << endl;
   geometry_msgs::msg::Twist body_cmd;
   body_cmd.linear.x = v_cmd_base.x();
   body_cmd.linear.y = v_cmd_base.y();
   body_cmd.linear.z = v_cmd_base.z();
-
+  if(body_cmd.linear.x < - 10 || body_cmd.linear.x > 10){
+    cout << "STH went wrong!" << v_des << "  " << p_error << "  " << last_p_error << "  " << p_error << endl;
+  }
   body_cmd.angular.x = 0.0;//w_cmd_base.x();
   body_cmd.angular.y = 0.0;//w_cmd_base.y();
   body_cmd.angular.z = w_cmd_base.z();
@@ -449,6 +540,51 @@ int main(int argc, char **argv)
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("traj_server");
   node_ = node;
+
+    // Declare gain parameters (defaults match your current hardcoded values)
+  node->declare_parameter("gains.kp.x", 0.6);
+  node->declare_parameter("gains.kp.y", 0.6);
+  node->declare_parameter("gains.kp.z", 0.6);
+
+  node->declare_parameter("gains.kd.x", 0.1);
+  node->declare_parameter("gains.kd.y", 0.1);
+  node->declare_parameter("gains.kd.z", 0.1);
+
+  node->declare_parameter("gains.ki.x", 0.1);
+  node->declare_parameter("gains.ki.y", 0.1);
+  node->declare_parameter("gains.ki.z", 0.1);
+
+  node->declare_parameter("gains.kp_yaw.x", 0.6);
+  node->declare_parameter("gains.kp_yaw.y", 0.6);
+  node->declare_parameter("gains.kp_yaw.z", 0.6);
+
+  node->declare_parameter("gains.kd_yaw.x", 0.1);
+  node->declare_parameter("gains.kd_yaw.y", 0.1);
+  node->declare_parameter("gains.kd_yaw.z", 0.1);
+
+  node->declare_parameter("gains.ki_yaw.x", 0.1);
+  node->declare_parameter("gains.ki_yaw.y", 0.1);
+  node->declare_parameter("gains.ki_yaw.z", 0.1);
+
+  // Load initial values
+  load_gains_from_params(node);
+
+  // Live update callback
+  gains_cb_handle = node->add_on_set_parameters_callback(
+    [node](const std::vector<rclcpp::Parameter>& params)
+      -> rcl_interfaces::msg::SetParametersResult
+    {
+      rcl_interfaces::msg::SetParametersResult res;
+      res.successful = true;
+      res.reason = "ok";
+
+      // Apply update by re-reading
+      load_gains_from_params(node);
+
+      return res;
+    });
+
+
   tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
   tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
@@ -494,12 +630,21 @@ int main(int argc, char **argv)
 
   last_yaw_ = 0.0;
   last_yaw_dot_ = 0.0;
+  last_p_error.setZero();
+  last_last_p_error.setZero();
+  p_error_deriv_approx.setZero();
+  integrated_error.setZero();
+  last_yaw_error = 0.0;
+  last_last_yaw_error = 0.0;
+  integrated_yaw_error = 0.0;
 
   rclcpp::sleep_for(std::chrono::seconds(1));
 
   RCLCPP_WARN(node->get_logger(), "[Traj server]: ready.");
 
-  rclcpp::spin(node);
+  rclcpp::executors::MultiThreadedExecutor exec;
+  exec.add_node(node);
+  exec.spin();
   rclcpp::shutdown();
 
   return 0;
