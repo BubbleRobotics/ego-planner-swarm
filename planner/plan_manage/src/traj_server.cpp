@@ -38,6 +38,7 @@ rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr bspline_sub;
 rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub;
 
 bool derivative_ready = false;
+bool second_ready = false;
 Eigen::Vector3d last_p_error;
 Eigen::Vector3d last_last_p_error;
 Eigen::Vector3d p_error_deriv_approx;
@@ -45,6 +46,7 @@ Eigen::Vector3d integrated_error;
 double last_yaw_error;
 double last_last_yaw_error;
 double integrated_yaw_error;
+double yaw_error_deriv_approx;
 std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 std::shared_ptr<tf2_ros::TransformListener> tf_listener;
 
@@ -185,6 +187,7 @@ void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
   // parse pos traj
   // reset the controller
   derivative_ready = false;
+  second_ready = false;
   last_p_error.setZero();
   last_last_p_error.setZero();
   p_error_deriv_approx.setZero();
@@ -192,7 +195,7 @@ void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
   last_yaw_error = 0.0;
   last_last_yaw_error = 0.0;
   integrated_yaw_error = 0.0;
-
+  yaw_error_deriv_approx = 0.0;
 
   Eigen::MatrixXd pos_pts(3, msg->pos_pts.size());
 
@@ -410,8 +413,9 @@ void cmdCallback()
 
   cmd.yaw = yaw_yawdot.first;
   cmd.yaw_dot = yaw_yawdot.second;
-
+  // Only for debugging: Send position command to see where we want to actually go
   pos_cmd_pub->publish(cmd);
+
   last_yaw_ = cmd.yaw;
 
   Eigen::Vector3d p_des = pos;
@@ -454,15 +458,29 @@ void cmdCallback()
   }
 
   Eigen::Vector3d p_error = p_des - p_meas;
+
+  double yaw_des  = euler_des(2);
+  yaw_meas = euler_meas(2);
+
+  double yaw_err = angleDiff(yaw_des, yaw_meas);
+
+  // Compute derivative approximation and integral of error
   // Second order approx of first derivative 
-  if (derivative_ready)
+  if (second_ready)
   {
       p_error_deriv_approx =
-          (- 3.0 * p_error
-           + 4.0 * last_p_error
-           - 1.0 * last_last_p_error ) / (2.0 * 0.01);
+          ( 3.0 * p_error
+          - 4.0 * last_p_error
+          + 1.0 * last_last_p_error ) / (2.0 * 0.01);
+
+      yaw_error_deriv_approx =
+          ( 3.0 * yaw_err
+          - 4.0 * last_yaw_error
+          + 1.0 * last_last_yaw_error ) / (2.0 * 0.01);
   }
+
   integrated_error += p_error*0.01;
+  integrated_yaw_error += yaw_err*0.01;
 
   Eigen::Vector3d v_cmd_world = v_des
     + Kp.cwiseProduct(p_error)
@@ -472,28 +490,28 @@ void cmdCallback()
   last_last_p_error = last_p_error;
   last_p_error = p_error;
 
-  if (!derivative_ready)
-      derivative_ready = true;
-
-  double yaw_des  = euler_des(2);
-  yaw_meas = euler_meas(2);
-
-  double yaw_err = angleDiff(yaw_des, yaw_meas);
-  integrated_yaw_error += yaw_err;
   // If you want yaw-rate feedback, use measured yaw rate (in the same frame as w_des!)
   double yaw_rate_des  = w_des(2);
-  double yaw_rate_meas = w_meas(2);  // make sure this corresponds to yaw rate about vertical in your chosen frame
+  double yaw_rate_meas = w_meas(2); 
 
   Eigen::Vector3d w_cmd_world = w_des;
 
-  // only yaw control here (leave x/y as you already force them to 0 later)
+  // only yaw control here (roll, pitch should be self stabilizing)
   w_cmd_world(2) = yaw_rate_des
                 + Kp_yaw(2) * yaw_err
-                - Kd_yaw(2) * (last_yaw_error - yaw_err)/0.01
+                - Kd_yaw(2) * yaw_error_deriv_approx
                 + Ki_yaw(2) * integrated_yaw_error;
   
+  last_last_yaw_error = last_yaw_error;
   last_yaw_error = yaw_err;
+  
 
+  if (!derivative_ready)
+      derivative_ready = true;
+  else{
+    if (!second_ready)
+      second_ready = true;
+  }
 
   const std::string world_frame = "odom";      
   // The desired final frame of the velocity (to be fed to the low level controller)
@@ -513,12 +531,15 @@ void cmdCallback()
 
   
   Eigen::Vector3d v_cmd_base = rotate_target_source(T_bw, v_cmd_world);
+
+  // Limit base frame velocity to v_min and v_max!
+  // TODO check if this could / should not be handled elsewhere
   v_cmd_base = v_cmd_base.cwiseMax(v_min).cwiseMin(v_max);
   Eigen::Vector3d w_cmd_base = rotate_target_source(T_bw, w_cmd_world);
-  /*geometry_msgs::msg::TwistStamped body_cmd;
-  body_cmd.header.stamp = time_now;
-  body_cmd.header.frame_id = body_frame;*/
-  cout << "New ITER! P DES" << p_des << "V DES" << v_des << " | P MEAS" << p_meas << " | P ERR" << p_error << " | P DER" << p_error_deriv_approx << " | V WRL" << v_cmd_world << " | V BAS" << v_cmd_base << endl;
+
+  // For debugging
+  //cout << "New ITER! P DES" << p_des << "V DES" << v_des << " | P MEAS" << p_meas << " | P ERR" << p_error << " | P DER" << p_error_deriv_approx << " | V WRL" << v_cmd_world << " | V BAS" << v_cmd_base << endl;
+  
   geometry_msgs::msg::Twist body_cmd;
   body_cmd.linear.x = v_cmd_base.x();
   body_cmd.linear.y = v_cmd_base.y();
@@ -546,21 +567,21 @@ int main(int argc, char **argv)
   node->declare_parameter("gains.kp.y", 0.6);
   node->declare_parameter("gains.kp.z", 0.6);
 
-  node->declare_parameter("gains.kd.x", 0.1);
-  node->declare_parameter("gains.kd.y", 0.1);
-  node->declare_parameter("gains.kd.z", 0.1);
+  node->declare_parameter("gains.kd.x", 0.0);
+  node->declare_parameter("gains.kd.y", 0.0);
+  node->declare_parameter("gains.kd.z", 0.0);
 
   node->declare_parameter("gains.ki.x", 0.1);
   node->declare_parameter("gains.ki.y", 0.1);
   node->declare_parameter("gains.ki.z", 0.1);
 
-  node->declare_parameter("gains.kp_yaw.x", 0.6);
-  node->declare_parameter("gains.kp_yaw.y", 0.6);
-  node->declare_parameter("gains.kp_yaw.z", 0.6);
+  node->declare_parameter("gains.kp_yaw.x", 0.8);
+  node->declare_parameter("gains.kp_yaw.y", 0.8);
+  node->declare_parameter("gains.kp_yaw.z", 0.8);
 
-  node->declare_parameter("gains.kd_yaw.x", 0.1);
-  node->declare_parameter("gains.kd_yaw.y", 0.1);
-  node->declare_parameter("gains.kd_yaw.z", 0.1);
+  node->declare_parameter("gains.kd_yaw.x", 0.0);
+  node->declare_parameter("gains.kd_yaw.y", 0.0);
+  node->declare_parameter("gains.kd_yaw.z", 0.0);
 
   node->declare_parameter("gains.ki_yaw.x", 0.1);
   node->declare_parameter("gains.ki_yaw.y", 0.1);
@@ -637,6 +658,7 @@ int main(int argc, char **argv)
   last_yaw_error = 0.0;
   last_last_yaw_error = 0.0;
   integrated_yaw_error = 0.0;
+  yaw_error_deriv_approx = 0.0;
 
   rclcpp::sleep_for(std::chrono::seconds(1));
 
