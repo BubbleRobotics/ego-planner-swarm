@@ -25,7 +25,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/realworld_experiment", false);
     node_->declare_parameter("fsm/fail_safe", true);
     node_->declare_parameter("fsm/pos_error_threshold", 0.3);
-    node_->declare_parameter("fsm/point_clicked_z_up", -1.0);
+  
 
     node_->get_parameter("fsm/flight_type", target_type_);
     node_->get_parameter("fsm/thresh_replan_time", replan_thresh_);
@@ -36,7 +36,6 @@ namespace ego_planner
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
     node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
-    node_->get_parameter("fsm/point_clicked_z_up", point_clicked_z_up_);
 
     have_trigger_ = !flag_realworld_experiment_;
 
@@ -78,18 +77,6 @@ namespace ego_planner
         {
           this->odometryCallback(msg);
         });
-
-    rviz_clicked_sub_ = node_->create_subscription<geometry_msgs::msg::PointStamped>(
-        "/ego_planner/clicked_point",
-        1,
-        [this](const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
-        {
-          this->pointClickedCallback(msg);
-        });
-      
-    new_goal_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
-        "/ego_planner/move_base_simple/goal",
-        10);
 
     set_velocity_acceleration_service_ = node_->create_service<traj_utils::srv::VelAccCmd>(
         "ego_planner/set_vel_acc_cmd",
@@ -295,18 +282,6 @@ namespace ego_planner
     planNextWaypoint(end_wp);
   }
 
-  void EGOReplanFSM::pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
-  {
-    geometry_msgs::msg::PoseStamped new_goal_;
-    new_goal_.header.stamp = node_->get_clock()->now();
-    new_goal_.header.frame_id = msg->header.frame_id;
-    new_goal_.pose.position.x = msg->point.x;
-    new_goal_.pose.position.y = msg->point.y;
-    new_goal_.pose.position.z = point_clicked_z_up_; // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
-    cout << "New Point Clicked, sent Goal Point!" << endl;
-
-    new_goal_pub_->publish(new_goal_);
-  }
 
   void EGOReplanFSM::odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
   {

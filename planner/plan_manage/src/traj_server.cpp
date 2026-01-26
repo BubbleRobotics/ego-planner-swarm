@@ -15,6 +15,18 @@
 #include <mutex>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <algorithm>
+#include <std_msgs/msg/string.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <vector>
+#include <Eigen/Dense>
+#include <iostream>
+#include <cmath>
+
+using std::vector;
+using std::min;
+using std::cout;
+using std::endl;
 
 // Gain storage (shared between timer + param callback)
 std::mutex gains_mtx;
@@ -37,9 +49,13 @@ rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr gains_cb_handl
 
 rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr pos_cmd_pub;
 rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr body_vel_pub;
+rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr new_goal_pub_;
 rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub;
 rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr bspline_sub;
 rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub;
+rclcpp::Subscription<std_msgs::msg::String>::SharedPtr controller_state_sub;
+rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr rviz_clicked_sub_;
+
 
 bool derivative_ready = false;
 bool second_ready = false;
@@ -53,7 +69,7 @@ double integrated_yaw_error;
 double yaw_error_deriv_approx;
 std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-
+geometry_msgs::msg::PoseStamped new_goal_;
 std::atomic<bool> have_odom{false};
 
 quadrotor_msgs::msg::PositionCommand cmd;
@@ -63,6 +79,9 @@ constexpr double PI = 3.1415926;
 using ego_planner::UniformBspline;
 
 bool receive_traj_ = false;
+bool vel_mode_ = false;
+bool received_goal_ = false;
+bool active_traj_ = false;
 vector<UniformBspline> traj_;
 double traj_duration_;
 rclcpp::Time start_time_;
@@ -77,6 +96,8 @@ rclcpp::Node::SharedPtr node_;
 
 Eigen::Vector3d odom_pos_, odom_vel_, odom_ang_vel_;
 Eigen::Quaterniond odom_orient_;
+
+
 
 static inline double wrapToPi(double a)
 {
@@ -142,6 +163,36 @@ static void load_gains_from_params(const rclcpp::Node::SharedPtr& node)
   Ki_yaw_g.z() = node->get_parameter("gains.ki_yaw.z").as_double();
 }
 
+void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
+  {
+    received_goal_ = true;
+    new_goal_.header.stamp = node_->get_clock()->now();
+    new_goal_.header.frame_id = msg->header.frame_id;
+    new_goal_.pose.position.x = msg->point.x;
+    new_goal_.pose.position.y = msg->point.y;
+    new_goal_.pose.position.z = node_->get_parameter("fsm.point_clicked_z_up").as_double(); // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
+    cout << "New Point Clicked, sent Goal Point!" << endl;
+    new_goal_pub_->publish(new_goal_);
+  }
+
+void controllerStateCallback(
+  const std::shared_ptr<const std_msgs::msg::String> msg)
+{
+  
+  vel_mode_ = (msg->data == "auv_controller");
+  // If we go back to auv_controller mode, resend the last clicked goal if we have one
+  // But if we already have an active trajectory, don't resend
+  if(vel_mode_ && received_goal_ && !active_traj_){
+    active_traj_ = true;
+    cout << "Resending last clicked goal point & setting active_traj_ to True!" << endl;
+    new_goal_pub_->publish(new_goal_);
+  }
+  if(!vel_mode_ && active_traj_){
+    cout << "No longer in auv_controller mode, setting active_traj_ to False & Stopping the robot!" << endl;
+    active_traj_ = false;
+    body_vel_pub->publish(geometry_msgs::msg::Twist()); // send zero vel command to stop the robot
+  }
+}
 
 void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
@@ -355,6 +406,10 @@ void cmdCallback()
     return;
   if (!have_odom.load())
     return;
+  if (!vel_mode_){
+    cout << "Cannot publish velocity commands, not using auv_control mode!" << endl;
+    return;
+  }
   // unified time source
   //rclcpp::Clock clock(RCL_ROS_TIME);  
   rclcpp::Time time_now = node_->get_clock()->now();
@@ -601,6 +656,8 @@ int main(int argc, char **argv)
   node->declare_parameter("gains.ki_yaw.y", 0.1);
   node->declare_parameter("gains.ki_yaw.z", 0.1);
 
+  node->declare_parameter("fsm.point_clicked_z_up", -1.0);
+
   // Load initial values
   load_gains_from_params(node);
 
@@ -632,6 +689,18 @@ int main(int argc, char **argv)
         10,
         odometryCallback
         );
+  controller_state_sub = node->create_subscription<std_msgs::msg::String>(
+    "controller_state",
+    10,
+    controllerStateCallback);
+  new_goal_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+        "/ego_planner/move_base_simple/goal",
+        10);
+  rviz_clicked_sub_ = node_->create_subscription<geometry_msgs::msg::PointStamped>(
+    "/ego_planner/clicked_point",
+    10,
+    pointClickedCallback);
+
 
   bspline_sub = node->create_subscription<traj_utils::msg::Bspline>(
       "planning/bspline",

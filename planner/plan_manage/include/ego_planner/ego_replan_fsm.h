@@ -67,7 +67,6 @@ namespace ego_planner
     bool flag_realworld_experiment_;
     bool enable_fail_safe_;
     float pos_error_threshold_;
-    double point_clicked_z_up_;
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
@@ -95,7 +94,6 @@ namespace ego_planner
     rclcpp::Subscription<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_sub_;
     rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr trigger_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr rviz_clicked_sub_;
 
     // rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr replan_pub_;
     // rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr new_pub_;
@@ -103,7 +101,6 @@ namespace ego_planner
     rclcpp::Publisher<traj_utils::msg::DataDisp>::SharedPtr data_disp_pub_;
     rclcpp::Publisher<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_pub_;
     rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr new_goal_pub_;
 
     rclcpp::Service<traj_utils::srv::VelAccCmd>::SharedPtr set_velocity_acceleration_service_;
     rclcpp::Service<traj_utils::srv::SetErrorThreshold>::SharedPtr set_error_threshold_service_;
