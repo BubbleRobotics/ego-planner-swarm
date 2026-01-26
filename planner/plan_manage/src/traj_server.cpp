@@ -553,7 +553,7 @@ void cmdCallback()
   // For debugging
   //cout << "New ITER! P DES" << p_des << "V DES" << v_des << " | P MEAS" << p_meas << " | P ERR" << p_error << " | P DER" << p_error_deriv_approx << " | V WRL" << v_cmd_world << " | V BAS" << v_cmd_base << endl;
   //cout << "New ITER! P DES" << yaw_des << "V DES" << yaw_rate_des << " | P MEAS" << yaw_meas << " | P ERR" << yaw_err << " | P DER" << yaw_error_deriv_approx <<  " | P INT" << integrated_yaw_error << " | V WRL" << w_cmd_world << " | V BAS" << w_cmd_base << endl;
-  double yaw_dot_sat =   integrated_yaw_error = std::clamp(w_cmd_base.z(), -1.0, 1.0);
+  double yaw_dot_sat = std::clamp(w_cmd_base.z(), -1.0, 1.0);
   geometry_msgs::msg::Twist body_cmd;
   body_cmd.linear.x = v_cmd_base.x();
   body_cmd.linear.y = v_cmd_base.y();
