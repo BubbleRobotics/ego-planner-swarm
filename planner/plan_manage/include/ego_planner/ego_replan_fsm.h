@@ -67,6 +67,7 @@ namespace ego_planner
     bool flag_realworld_experiment_;
     bool enable_fail_safe_;
     float pos_error_threshold_;
+    double point_clicked_z_up_;
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;

@@ -19,6 +19,7 @@ def generate_launch_description():
     map_size_y = LaunchConfiguration('map_size_y', default = 50.0)
     map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
+    point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     
     
     # Declare global parameters
@@ -30,7 +31,7 @@ def generate_launch_description():
     map_size_y_cmd = DeclareLaunchArgument('map_size_y', default_value=map_size_y, description='Map size along y')
     map_size_z_cmd = DeclareLaunchArgument('map_size_z', default_value=map_size_z, description='Map size along z')
     odom_topic_cmd = DeclareLaunchArgument('odom_topic', default_value=odom_topic, description='Odometry topic')
-
+    point_clicked_z_up_cmd = DeclareLaunchArgument('point_clicked_z_up', default_value=point_clicked_z_up_, description='Default z-value (up) for rviz clicked points (new goal of planner)')
     # Map properties and whether to use dynamic simulation
     use_mockamap = LaunchConfiguration('use_mockamap', default=False) # map_generator or mockamap 
     
@@ -112,6 +113,7 @@ def generate_launch_description():
             'point4_x': str(2.5),
             'point4_y': str(-7.0),
             'point4_z': str(-5.0),
+            'point_clicked_z_up': point_clicked_z_up_
             
         }.items()
     )

@@ -25,6 +25,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/realworld_experiment", false);
     node_->declare_parameter("fsm/fail_safe", true);
     node_->declare_parameter("fsm/pos_error_threshold", 0.3);
+    node_->declare_parameter("fsm/point_clicked_z_up", -1.0);
 
     node_->get_parameter("fsm/flight_type", target_type_);
     node_->get_parameter("fsm/thresh_replan_time", replan_thresh_);
@@ -35,6 +36,7 @@ namespace ego_planner
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
     node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
+    node_->get_parameter("fsm/point_clicked_z_up", point_clicked_z_up_);
 
     have_trigger_ = !flag_realworld_experiment_;
 
@@ -300,7 +302,7 @@ namespace ego_planner
     new_goal_.header.frame_id = msg->header.frame_id;
     new_goal_.pose.position.x = msg->point.x;
     new_goal_.pose.position.y = msg->point.y;
-    new_goal_.pose.position.z = -2; // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
+    new_goal_.pose.position.z = point_clicked_z_up_; // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
     cout << "New Point Clicked, sent Goal Point!" << endl;
 
     new_goal_pub_->publish(new_goal_);

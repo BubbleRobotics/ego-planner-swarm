@@ -14,6 +14,7 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <mutex>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
+#include <algorithm>
 
 // Gain storage (shared between timer + param callback)
 std::mutex gains_mtx;
@@ -27,6 +28,9 @@ Eigen::Vector3d Ki_yaw_g(0.1, 0.1, 0.1);
 
 Eigen::Vector3d v_max(0.9, 0.9, 0.9);// TODO tune, or make tunable
 Eigen::Vector3d v_min = -v_max;
+
+Eigen::Vector3d integrator_max(1.0, 1.0, 1.0);
+Eigen::Vector3d integrator_min = -integrator_max;
 
 
 rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr gains_cb_handle;
@@ -55,7 +59,7 @@ std::atomic<bool> have_odom{false};
 quadrotor_msgs::msg::PositionCommand cmd;
 double pos_gain[3] = {0, 0, 0};
 double vel_gain[3] = {0, 0, 0};
-
+constexpr double PI = 3.1415926;
 using ego_planner::UniformBspline;
 
 bool receive_traj_ = false;
@@ -77,9 +81,9 @@ Eigen::Quaterniond odom_orient_;
 static inline double wrapToPi(double a)
 {
   // returns in [-pi, pi]
-  a = std::fmod(a + M_PI, 2.0 * M_PI);
-  if (a < 0) a += 2.0 * M_PI;
-  return a - M_PI;
+  a = std::fmod(a + PI, 2.0 * PI);
+  if (a < 0) a += 2.0 * PI;
+  return a - PI;
 }
 
 static inline double angleDiff(double target, double current)
@@ -244,7 +248,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, doub
     return std::make_pair(snake_yaw, 0.0);
   }
 
-  constexpr double PI = 3.1415926;
+  
   constexpr double YAW_DOT_MAX_PER_SEC = PI;
   // constexpr double YAW_DOT_DOT_MAX_PER_SEC = PI;
   std::pair<double, double> yaw_yawdot(0, 0);
@@ -422,6 +426,8 @@ void cmdCallback()
   Eigen::Vector3d v_des = vel;
   Eigen::Vector3d euler_des;
   Eigen::Vector3d w_des;
+  euler_des.setZero();
+  w_des.setZero();
   euler_des(2) = cmd.yaw;
   w_des(2) = cmd.yaw_dot;
 
@@ -481,6 +487,9 @@ void cmdCallback()
 
   integrated_error += p_error*0.01;
   integrated_yaw_error += yaw_err*0.01;
+
+  integrated_error = integrated_error.cwiseMax(integrator_min).cwiseMin(integrator_max);
+  integrated_yaw_error = std::clamp(integrated_yaw_error, integrator_min(2), integrator_max(2));
 
   Eigen::Vector3d v_cmd_world = v_des
     + Kp.cwiseProduct(p_error)

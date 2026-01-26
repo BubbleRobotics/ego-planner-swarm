@@ -51,6 +51,7 @@ def generate_launch_description():
     
     drone_id = LaunchConfiguration('drone_id', default=0)
 
+    point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     # DeclareLaunchArguments
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value=use_sim_time, description='Use simulation time')
 
@@ -90,7 +91,8 @@ def generate_launch_description():
     use_distinctive_trajs_arg = DeclareLaunchArgument('use_distinctive_trajs', default_value=use_distinctive_trajs, description='Use distinctive trajectories')
     obj_num_set_arg = DeclareLaunchArgument('obj_num_set', default_value=obj_num_set, description='Number of objects')
     drone_id_arg = DeclareLaunchArgument('drone_id', default_value=drone_id, description='Drone ID')
-
+    point_clicked_z_up_arg = DeclareLaunchArgument('point_clicked_z_up', default_value=point_clicked_z_up_, description='Default z-value (up) for rviz clicked points (new goal of planner)')
+    
     # Ego Planner Node
     ego_planner_node = Node(
         package='ego_planner',
@@ -143,6 +145,7 @@ def generate_launch_description():
             {'fsm/waypoint4_x': point4_x},
             {'fsm/waypoint4_y': point4_y},
             {'fsm/waypoint4_z': point4_z},
+            {'fsm/point_clicked_z_up': point_clicked_z_up_},
             
             {'grid_map/resolution': 0.1},
             {'grid_map/map_size_x': map_size_x},
