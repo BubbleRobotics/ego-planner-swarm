@@ -22,6 +22,7 @@ namespace ego_planner
     node_->declare_parameter("manager/planning_horizon", 5.0);
     node_->declare_parameter("manager/use_distinctive_trajs", false);
     node_->declare_parameter("manager/drone_id", -1);
+    node_->declare_parameter("manager/use_snake_yaw", false);
 
     node_->get_parameter("manager/max_vel", pp_.max_vel_);
     node_->get_parameter("manager/max_acc", pp_.max_acc_);
@@ -31,6 +32,7 @@ namespace ego_planner
     node_->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
     node_->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
     node_->get_parameter("manager/drone_id", pp_.drone_id);
+    node_->get_parameter("manager/use_snake_yaw", pp_.use_snake_yaw);
 
     local_data_.traj_id_ = 0;
     grid_map_.reset(new GridMap);
@@ -45,6 +47,12 @@ namespace ego_planner
     bspline_optimizer_->a_star_->initGridMap(grid_map_, Eigen::Vector3i(100, 100, 100));
 
     visualization_ = vis;
+
+    snake_yaw_sub_ = node_->create_subscription<traj_utils::msg::SnakeYaw>(
+    "planning/snake_yaw",
+    10,
+    std::bind(&EGOPlannerManager::snakeyawCallback, this, std::placeholders::_1));
+
   }
   
   void EGOPlannerManager::setMaxVelAcc(float max_vel, float max_acc)
@@ -59,6 +67,12 @@ namespace ego_planner
       pp_.max_acc_ = max_acc;
     }
   }
+
+  void EGOPlannerManager::snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg)
+  {
+    pp_.use_snake_yaw = msg->use_snake_yaw;
+  }
+
 
   bool EGOPlannerManager::reboundReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel,
                                         Eigen::Vector3d start_acc, Eigen::Vector3d local_target_pt,
@@ -76,13 +90,25 @@ namespace ego_planner
 
     bspline_optimizer_->setLocalTargetPt(local_target_pt);
 
+    if (pp_.use_snake_yaw || true)
+    {
+      if (tryStraightLinePlan(start_pt, start_vel, start_acc, local_target_pt, local_target_vel))
+      {
+        std::cout << "[EGOPlannerManager] straight-line plan succeeded.\n";
+        return true;
+      }
+      std::cout << "[EGOPlannerManager] straight-line blocked/infeasible, fallback to rebound.\n";
+    }
+
+
     rclcpp::Time t_start = rclcpp::Clock().now();
     rclcpp::Duration t_init(0, 0), t_opt(0, 0), t_refine(0, 0);
 
     /*** STEP 1: INIT
-    Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 5×.
+    Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 0.5×. TODO check if setting this lower was correct
     ***/
-    double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
+    double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 0.5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
+    std::cout << "Initial ts: " << ts << "and dist:" << (start_pt - local_target_pt).norm() << std::endl;
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
     static bool flag_first_call = true, flag_force_polynomial = false;
     bool flag_regenerate = false;
@@ -164,9 +190,11 @@ namespace ego_planner
       }
       else // Initial path generated from previous trajectory.
       {
+        std::cout << "Starting point: " << start_pt << std::endl;
         std::cout << "From Previous polynomial trajectory." << std::endl;
         double t;
         double t_cur = (node_->get_clock()->now() - local_data_.start_time_).seconds();
+        std::cout << "Start point" << start_pt << "local_target:" << local_data_.position_traj_.evaluateDeBoorT(t_cur) << std::endl;
 
         vector<double> pseudo_arc_length;
         vector<Eigen::Vector3d> segment_point;
@@ -252,7 +280,7 @@ namespace ego_planner
               }
               point_set.push_back(local_target_pt);
             } while (point_set.size() < 7); // If the start point is very close to end point, this will help
-
+            std::cout << "Starting point after: " << point_set[0] << std::endl;
             if (!point_set.empty())
               used_prev_traj = true;
           }
@@ -443,8 +471,10 @@ namespace ego_planner
   {
     // if (local_data_.start_time_.toSec() < 1e9) // It means my first planning has not started
     if (local_data_.start_time_.seconds() < 1e9)
+    {
       cout << "If we are here, that is very bad!" << endl;
       return false;
+    }
 
     // double my_traj_start_time = local_data_.start_time_.toSec();
     // double other_traj_start_time = swarm_trajs_buf_[drone_id].start_time_.toSec();
@@ -658,6 +688,110 @@ namespace ego_planner
       point_set.push_back(bspline.evaluateDeBoorT(time));
     }
     UniformBspline::parameterizeToBspline(dt, point_set, start_end_derivative, ctrl_pts);
+  }
+  bool EGOPlannerManager::isStraightLineFree(const Eigen::Vector3d& p0,
+                                            const Eigen::Vector3d& p1,
+                                            double step) const
+  {
+    const double dist = (p1 - p0).norm();
+    if (dist < 1e-6) return true;
+
+    const Eigen::Vector3d dir = (p1 - p0) / dist;
+    const int n = std::max(2, int(std::ceil(dist / step)));
+
+    for (int i = 0; i <= n; ++i)
+    {
+      const double s = dist * (double(i) / double(n));
+      const Eigen::Vector3d p = p0 + s * dir;
+
+      if (grid_map_->getInflateOccupancy(p))
+        return false;
+    }
+    return true;
+  }
+
+  bool EGOPlannerManager::tryStraightLinePlan(const Eigen::Vector3d& start_pt,
+                                              const Eigen::Vector3d& start_vel,
+                                              const Eigen::Vector3d& start_acc,
+                                              const Eigen::Vector3d& target_pt,
+                                              const Eigen::Vector3d& target_vel)
+  {
+    // 1) segment collision check (fast reject)
+    const double seg_step = std::max(0.5 * grid_map_->getResolution(), 0.05);
+    if (!isStraightLineFree(start_pt, target_pt, seg_step))
+      {cout << "[EGOPlannerManager] straight-line path blocked by obstacle.\n" << endl;
+      return false;}
+
+    // 2) create enough points on the line for Bspline parameterization
+    const double dist = (target_pt - start_pt).norm();
+    const int num_pts = std::max(7, int(std::ceil(dist / pp_.ctrl_pt_dist)) + 1);
+
+    std::vector<Eigen::Vector3d> point_set;
+    point_set.reserve(num_pts);
+    for (int i = 0; i < num_pts; ++i)
+    {
+      const double a = double(i) / double(num_pts - 1);
+      point_set.push_back(start_pt + a * (target_pt - start_pt));
+    }
+
+    // 3) choose ts identical to existing EGO Planner heuristic
+    double avg_ds = (target_pt - start_pt).norm() / std::max(1, num_pts - 1);
+    double ts = avg_ds / std::max(1e-3, pp_.max_vel_);
+
+    // add safety margin (slower is safer)
+    ts *= 1.5; 
+
+    // 4) derivatives
+    std::vector<Eigen::Vector3d> start_end_derivatives;
+    start_end_derivatives.reserve(4);
+    start_end_derivatives.push_back(start_vel);
+    start_end_derivatives.push_back(target_vel);
+    start_end_derivatives.push_back(start_acc);
+    start_end_derivatives.push_back(Eigen::Vector3d::Zero());
+
+    // 5) parameterize to Bspline
+    Eigen::MatrixXd ctrl_pts;
+    UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
+
+    UniformBspline pos(ctrl_pts, 3, ts);
+    pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
+
+    // 6) feasibility check
+    double ratio = 1.0;
+    if (!pos.checkFeasibility(ratio, false)) {
+      // scale ts and re-parameterize
+      ts *= ratio;
+      UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
+      pos = UniformBspline(ctrl_pts, 3, ts);
+      pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
+
+      ratio = 1.0;
+      if (!pos.checkFeasibility(ratio, false)) {
+        std::cout << "[EGOPlannerManager] straight-line Bspline infeasible even after ts scaling.\n";
+        return false;
+      }
+    }
+
+
+    // 7) extra safety: sample the produced Bspline for collision
+    const double T = pos.getTimeSum();
+    const double dt = std::max(0.02, 0.25 * T / (ctrl_pts.cols() - 3));
+
+    for (double t = 0.0; t <= T; t += dt)
+    {
+      if (grid_map_->getInflateOccupancy(pos.evaluateDeBoorT(t)))
+      {
+        cout << "[EGOPlannerManager] straight-line Bspline hits obstacle.\n";      
+        return false;
+      }
+    }
+
+    // 8) commit & visualize
+    updateTrajInfo(pos, node_->get_clock()->now());
+    continous_failures_count_ = 0;
+    visualization_->displayInitPathList(point_set, 0.2, 0);
+
+    return true;
   }
 
 } // namespace ego_planner

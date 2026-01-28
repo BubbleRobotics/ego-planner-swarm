@@ -172,6 +172,8 @@ void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointS
     new_goal_.pose.position.y = msg->point.y;
     new_goal_.pose.position.z = node_->get_parameter("fsm.point_clicked_z_up").as_double(); // msg->pose.pose.position.z; //TODO once 3D point selection works, remove this
     cout << "New Point Clicked, sent Goal Point!" << endl;
+    integrated_error.setZero();
+    integrated_yaw_error = 0.0;
     new_goal_pub_->publish(new_goal_);
   }
 
@@ -190,6 +192,8 @@ void controllerStateCallback(
   if(!vel_mode_ && active_traj_){
     cout << "No longer in auv_controller mode, setting active_traj_ to False & Stopping the robot!" << endl;
     active_traj_ = false;
+    integrated_error.setZero();
+    integrated_yaw_error = 0.0;
     body_vel_pub->publish(geometry_msgs::msg::Twist()); // send zero vel command to stop the robot
   }
 }
@@ -250,10 +254,10 @@ void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
   last_p_error.setZero();
   last_last_p_error.setZero();
   p_error_deriv_approx.setZero();
-  integrated_error.setZero();
+  //integrated_error.setZero();
   last_yaw_error = 0.0;
   last_last_yaw_error = 0.0;
-  integrated_yaw_error = 0.0;
+  //integrated_yaw_error = 0.0;
   yaw_error_deriv_approx = 0.0;
 
   Eigen::MatrixXd pos_pts(3, msg->pos_pts.size());
