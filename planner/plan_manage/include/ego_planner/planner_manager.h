@@ -11,6 +11,8 @@
 #include <traj_utils/plan_container.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <traj_utils/planning_visualization.h>
+#include <traj_utils/msg/snake_yaw.hpp>
+#include <mutex>
 
 namespace ego_planner
 {
@@ -45,15 +47,15 @@ namespace ego_planner
     double getSwarmClearance(void) { return bspline_optimizer_->getSwarmClearance(); }
 
     bool checkCollision(int drone_id);
-    
+
     void setMaxVelAcc(float max_vel, float max_acc);
-    
+
 
     PlanParameters pp_;
     LocalTrajData local_data_;
     GlobalTrajData global_data_;
     GridMap::Ptr grid_map_;
-    fast_planner::ObjPredictor::Ptr obj_predictor_;    
+    fast_planner::ObjPredictor::Ptr obj_predictor_;
     SwarmTrajData swarm_trajs_buf_;
 
   private:
@@ -73,10 +75,22 @@ namespace ego_planner
 
     bool refineTrajAlgo(UniformBspline &traj, vector<Eigen::Vector3d> &start_end_derivative, double ratio, double &ts, Eigen::MatrixXd &optimal_control_points);
     rclcpp::Node::SharedPtr node_;
-    
+
     // !SECTION stable
 
-    // SECTION developing
+    // SECTION developing    
+    bool isStraightLineFree(const Eigen::Vector3d& p0,
+                            const Eigen::Vector3d& p1,
+                            double step) const;
+
+    bool tryStraightLinePlan(const Eigen::Vector3d& start_pt,
+                             const Eigen::Vector3d& start_vel,
+                             const Eigen::Vector3d& start_acc,
+                             const Eigen::Vector3d& target_pt,
+                             const Eigen::Vector3d& target_vel);
+  
+    rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub_;
+    void snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg);
 
   public:
     typedef unique_ptr<EGOPlannerManager> Ptr;

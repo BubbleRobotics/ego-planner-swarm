@@ -197,7 +197,7 @@ namespace ego_planner
     double planning_horizen_;
     bool use_distinctive_trajs;
     int drone_id; // single drone: drone_id <= -1, swarm: drone_id >= 0
-
+    bool use_snake_yaw = false;
     /* processing time */
     double time_search_ = 0.0;
     double time_optimize_ = 0.0;

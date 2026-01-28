@@ -184,10 +184,17 @@ namespace ego_planner
     const std::shared_ptr<traj_utils::srv::VelAccCmd::Request> request,
     std::shared_ptr<traj_utils::srv::VelAccCmd::Response> response)
   {
-    float max_vel = request->max_velocity;
-    float max_acc = request->max_acceleration;
+    float max_vel = planner_manager_->pp_.max_vel_;
+    float max_acc = planner_manager_->pp_.max_acc_;
+    if (request->max_velocity != 0.0){
+      max_vel = request->max_velocity;
+    }
+    if (request->max_acceleration != 0.0){
+      max_acc = request->max_acceleration;
+    }
     planner_manager_->setMaxVelAcc(max_vel, max_acc);
     response->success = true;
+    cout << "[EGOReplanFSM] Set max_vel: " << max_vel << ", max_acc: " << max_acc << endl;
     return;
   }
 
@@ -223,7 +230,12 @@ namespace ego_planner
   void EGOReplanFSM::planNextWaypoint(const Eigen::Vector3d next_wp)
   {
     bool success = false;
-    success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+    if (planner_manager_->pp_.use_snake_yaw) {
+      // While inspecting in snake pattern robot should be still when sending the next waypoint
+      success = planner_manager_->planGlobalTraj(odom_pos_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+    } else {
+      success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+    }
     
     if (success)
     {
@@ -611,7 +623,7 @@ namespace ego_planner
       t_cur = std::min(info->duration_, t_cur);
 
       Eigen::Vector3d pos = info->position_traj_.evaluateDeBoorT(t_cur);
-
+      pos = odom_pos_; // use odom position directly to avoid drift
       /* && (end_pt_ - pos).norm() < 0.5 */
       if ((target_type_ == TARGET_TYPE::PRESET_TARGET) &&
           (wp_id_ < waypoint_num_ - 1) &&
@@ -632,8 +644,15 @@ namespace ego_planner
             wp_id_ = 0;
             planNextWaypoint(wps_[wp_id_]);
           }
-
-          changeFSMExecState(WAIT_TARGET, "FSM");
+          if ((end_pt_ - pos).norm() > no_replan_thresh_){
+            have_target_ = true;
+            have_trigger_ = true;
+            changeFSMExecState(REPLAN_TRAJ, "FSM");
+            
+          }
+          else
+            changeFSMExecState(WAIT_TARGET, "FSM");
+            
           goto force_return;
         }
         else if ((end_pt_ - pos).norm() > no_replan_thresh_ && t_cur > replan_thresh_)
