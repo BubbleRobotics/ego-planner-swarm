@@ -90,7 +90,7 @@ namespace ego_planner
 
     bspline_optimizer_->setLocalTargetPt(local_target_pt);
 
-    if (pp_.use_snake_yaw || true)
+    if (pp_.use_snake_yaw)
     {
       if (tryStraightLinePlan(start_pt, start_vel, start_acc, local_target_pt, local_target_vel))
       {
@@ -108,7 +108,7 @@ namespace ego_planner
     Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 0.5×. TODO check if setting this lower was correct
     ***/
     double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 0.5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
-    std::cout << "Initial ts: " << ts << "and dist:" << (start_pt - local_target_pt).norm() << std::endl;
+    //std::cout << "Initial ts: " << ts << "and dist:" << (start_pt - local_target_pt).norm() << std::endl;
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
     static bool flag_first_call = true, flag_force_polynomial = false;
     bool flag_regenerate = false;
@@ -123,7 +123,7 @@ namespace ego_planner
       // If we enter the else-branch, abnormal situations may set flag_regenerate to true, causing the do-block to run again.
       if (flag_first_call || flag_polyInit || flag_force_polynomial /*|| ( start_pt - local_target_pt ).norm() < 1.0*/) // Initial path generated from a min-snap traj by order.
       {
-        std::cout << "Initial path generated from polynomial trajectory." << flag_first_call << flag_polyInit << flag_force_polynomial << std::endl;
+        //std::cout << "Initial path generated from polynomial trajectory." << flag_first_call << flag_polyInit << flag_force_polynomial << std::endl;
         flag_first_call = false;
         flag_force_polynomial = false;
         // Used to store the generated trajectory
@@ -190,11 +190,11 @@ namespace ego_planner
       }
       else // Initial path generated from previous trajectory.
       {
-        std::cout << "Starting point: " << start_pt << std::endl;
-        std::cout << "From Previous polynomial trajectory." << std::endl;
+        //std::cout << "Starting point: " << start_pt << std::endl;
+        //std::cout << "From Previous polynomial trajectory." << std::endl;
         double t;
         double t_cur = (node_->get_clock()->now() - local_data_.start_time_).seconds();
-        std::cout << "Start point" << start_pt << "local_target:" << local_data_.position_traj_.evaluateDeBoorT(t_cur) << std::endl;
+        //std::cout << "Start point" << start_pt << "local_target:" << local_data_.position_traj_.evaluateDeBoorT(t_cur) << std::endl;
 
         vector<double> pseudo_arc_length;
         vector<Eigen::Vector3d> segment_point;

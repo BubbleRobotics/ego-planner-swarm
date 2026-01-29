@@ -22,12 +22,14 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include <cmath>
+#include <rclcpp/parameter_event_handler.hpp>
+#include <rcl_interfaces/msg/parameter_event.hpp>
+
 
 using std::vector;
 using std::min;
 using std::cout;
 using std::endl;
-
 // Gain storage (shared between timer + param callback)
 std::mutex gains_mtx;
 Eigen::Vector3d Kp_g(0.4, 0.4, 0.4);
@@ -46,6 +48,10 @@ Eigen::Vector3d integrator_min = -integrator_max;
 
 
 rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr gains_cb_handle;
+static std::shared_ptr<rclcpp::ParameterEventHandler> g_param_handler;
+static rclcpp::ParameterEventCallbackHandle::SharedPtr g_param_event_handle;
+
+
 
 rclcpp::Publisher<quadrotor_msgs::msg::PositionCommand>::SharedPtr pos_cmd_pub;
 rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr body_vel_pub;
@@ -136,6 +142,7 @@ static inline Eigen::Vector3d rotate_target_source(
 
 static void load_gains_from_params(const rclcpp::Node::SharedPtr& node)
 {
+
   std::lock_guard<std::mutex> lk(gains_mtx);
 
   Kp_g.x() = node->get_parameter("gains.kp.x").as_double();
@@ -161,6 +168,7 @@ static void load_gains_from_params(const rclcpp::Node::SharedPtr& node)
   Ki_yaw_g.x() = node->get_parameter("gains.ki_yaw.x").as_double();
   Ki_yaw_g.y() = node->get_parameter("gains.ki_yaw.y").as_double();
   Ki_yaw_g.z() = node->get_parameter("gains.ki_yaw.z").as_double();
+
 }
 
 void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg)
@@ -205,6 +213,12 @@ void odometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
     static const std::string world_frame  = "odom";
     geometry_msgs::msg::TransformStamped T_wb;
     try {
+      // check if transform is available
+      if (!tf_buffer->canTransform(world_frame, velocity_frame, tf2::TimePointZero,
+                              tf2::durationFromSec(0.002))) {
+        RCLCPP_WARN(node_->get_logger(), "TF lookup failed");
+        return;
+      }
       // use latest transform
       T_wb = tf_buffer->lookupTransform(world_frame, velocity_frame, tf2::TimePointZero);
     } catch (const tf2::TransformException& ex) {
@@ -384,7 +398,9 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, doub
         yawdot = (yaw_temp - last_yaw_) / dt;
     }
   }
-
+  if (yawdot > 1 || yawdot < -1){
+    cout << "YAWDOT" << yawdot << " DT" << dt << " YAWTEMP" << yaw_temp << " LASTYAW" << last_yaw_ << endl;
+  }
   if (fabs(yaw - last_yaw_) <= max_yaw_change)
     yaw = 0.5 * last_yaw_ + 0.5 * yaw; // nieve LPF
   yawdot = 0.5 * last_yaw_dot_ + 0.5 * yawdot;
@@ -393,7 +409,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, doub
 
   yaw_yawdot.first = yaw;
   yaw_yawdot.second = yawdot;
-
+  
   return yaw_yawdot;
 }
 
@@ -537,15 +553,16 @@ void cmdCallback()
   // Second order approx of first derivative 
   if (second_ready)
   {
-      p_error_deriv_approx =
-          ( 3.0 * p_error
+      p_error_deriv_approx = (p_error - last_p_error) / 0.01;
+          
+      /*p_error_deriv_approx = ( 3.0 * p_error
           - 4.0 * last_p_error
-          + 1.0 * last_last_p_error ) / (2.0 * 0.01);
-
-      yaw_error_deriv_approx =
+          + 1.0 * last_last_p_error ) / (2.0 * 0.01);*/
+      yaw_error_deriv_approx = (yaw_err - last_yaw_error) / 0.01;
+      /*yaw_error_deriv_approx =
           ( 3.0 * yaw_err
           - 4.0 * last_yaw_error
-          + 1.0 * last_last_yaw_error ) / (2.0 * 0.01);
+          + 1.0 * last_last_yaw_error ) / (2.0 * 0.01);*/
   }
 
   integrated_error += p_error*0.01;
@@ -556,22 +573,20 @@ void cmdCallback()
 
   Eigen::Vector3d v_cmd_world = v_des
     + Kp.cwiseProduct(p_error)
-    - Kd.cwiseProduct(p_error_deriv_approx)
+    - Kd.cwiseProduct(v_meas)
     + Ki.cwiseProduct(integrated_error);
-
+  //cout << "P ERR: " << p_error.transpose() << " | V ERR: " << (v_des - v_meas).transpose() << " | INT ERR: " << integrated_error.transpose() << endl;
+  //cout << "Kp" << Kp.transpose() << " Kd " << Kd.transpose() << " Ki " << Ki.transpose() << endl;
   last_last_p_error = last_p_error;
   last_p_error = p_error;
 
-  // If you want yaw-rate feedback, use measured yaw rate (in the same frame as w_des!)
-  double yaw_rate_des  = w_des(2);
-  double yaw_rate_meas = w_meas(2); 
 
   Eigen::Vector3d w_cmd_world = w_des;
 
   // only yaw control here (roll, pitch should be self stabilizing)
-  w_cmd_world(2) = yaw_rate_des
+  w_cmd_world(2) = w_des(2)
                 + Kp_yaw(2) * yaw_err
-                - Kd_yaw(2) * yaw_error_deriv_approx
+                - Kd_yaw(2) * (w_meas(2))
                 + Ki_yaw(2) * integrated_yaw_error;
   
   last_last_yaw_error = last_yaw_error;
@@ -593,9 +608,10 @@ void cmdCallback()
       // use latest transform
       if (!tf_buffer->canTransform(body_frame, world_frame, tf2::TimePointZero,
                               tf2::durationFromSec(0.002))) {
-    return;
-    }
-    T_bw = tf_buffer->lookupTransform(body_frame, world_frame, tf2::TimePointZero);
+        RCLCPP_WARN(node_->get_logger(), "TF lookup failed");
+        return;
+      }
+      T_bw = tf_buffer->lookupTransform(body_frame, world_frame, tf2::TimePointZero);
   } catch (const tf2::TransformException& ex) {
     RCLCPP_WARN(node_->get_logger(), "TF lookup failed: %s", ex.what());
     return;
@@ -611,7 +627,7 @@ void cmdCallback()
 
   // For debugging
   //cout << "New ITER! P DES" << p_des << "V DES" << v_des << " | P MEAS" << p_meas << " | P ERR" << p_error << " | P DER" << p_error_deriv_approx << " | V WRL" << v_cmd_world << " | V BAS" << v_cmd_base << endl;
-  //cout << "New ITER! P DES" << yaw_des << "V DES" << yaw_rate_des << " | P MEAS" << yaw_meas << " | P ERR" << yaw_err << " | P DER" << yaw_error_deriv_approx <<  " | P INT" << integrated_yaw_error << " | V WRL" << w_cmd_world << " | V BAS" << w_cmd_base << endl;
+  //cout << "New ITER! P DES" << yaw_des << "V DES" << w_des(2) << " | P MEAS" << yaw_meas << " | P ERR" << yaw_err << " | P DER" << yaw_error_deriv_approx <<  " | P INT" << integrated_yaw_error << " | V WRL" << w_cmd_world << " | V BAS" << w_cmd_base << endl;
   double yaw_dot_sat = std::clamp(w_cmd_base.z(), -1.0, 1.0);
   geometry_msgs::msg::Twist body_cmd;
   body_cmd.linear.x = v_cmd_base.x();
@@ -622,7 +638,7 @@ void cmdCallback()
   }
   body_cmd.angular.x = 0.0;//w_cmd_base.x();
   body_cmd.angular.y = 0.0;//w_cmd_base.y();
-  body_cmd.angular.z = w_cmd_base.z();
+  body_cmd.angular.z = yaw_dot_sat;
 
   body_vel_pub->publish(body_cmd);
 
@@ -635,7 +651,6 @@ int main(int argc, char **argv)
   auto node = rclcpp::Node::make_shared("traj_server");
   node_ = node;
 
-    // Declare gain parameters (defaults match your current hardcoded values)
   node->declare_parameter("gains.kp.x", 0.6);
   node->declare_parameter("gains.kp.y", 0.6);
   node->declare_parameter("gains.kp.z", 0.6);
@@ -662,22 +677,27 @@ int main(int argc, char **argv)
 
   node->declare_parameter("fsm.point_clicked_z_up", -1.0);
 
-  // Load initial values
   load_gains_from_params(node);
 
-  // Live update callback
-  gains_cb_handle = node->add_on_set_parameters_callback(
-    [node](const std::vector<rclcpp::Parameter>& params)
-      -> rcl_interfaces::msg::SetParametersResult
+  g_param_handler = std::make_shared<rclcpp::ParameterEventHandler>(node);
+  const std::string my_fqn = node->get_fully_qualified_name();
+
+  g_param_event_handle = g_param_handler->add_parameter_event_callback(
+    [node, my_fqn](const rcl_interfaces::msg::ParameterEvent & event)
     {
-      rcl_interfaces::msg::SetParametersResult res;
-      res.successful = true;
-      res.reason = "ok";
+      // Only react to this node's events (optional but recommended)
+      if (event.node != my_fqn) return;
 
-      // Apply update by re-reading
-      load_gains_from_params(node);
+      auto is_gain = [](const std::string & name) {
+        return name.rfind("gains.", 0) == 0;  // starts with "gains."
+      };
 
-      return res;
+      for (const auto & p : event.changed_parameters) {
+        if (is_gain(p.name)) { load_gains_from_params(node); return; }
+      }
+      for (const auto & p : event.new_parameters) {
+        if (is_gain(p.name)) { load_gains_from_params(node); return; }
+      }
     });
 
 
@@ -693,6 +713,7 @@ int main(int argc, char **argv)
         10,
         odometryCallback
         );
+        
   controller_state_sub = node->create_subscription<std_msgs::msg::String>(
     "controller_state",
     10,
@@ -723,7 +744,7 @@ int main(int argc, char **argv)
   auto cmd_timer = node->create_timer(
       std::chrono::milliseconds(10),
       cmdCallback);
-
+  
   /* control parameter */
   cmd.kx[0] = pos_gain[0];
   cmd.kx[1] = pos_gain[1];
