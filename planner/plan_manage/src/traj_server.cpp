@@ -195,6 +195,8 @@ void controllerStateCallback(
   if(vel_mode_ && received_goal_ && !active_traj_){
     active_traj_ = true;
     cout << "Resending last clicked goal point & setting active_traj_ to True!" << endl;
+    integrated_error.setZero();
+    integrated_yaw_error = 0.0;
     new_goal_pub_->publish(new_goal_);
   }
   if(!vel_mode_ && active_traj_){
@@ -427,7 +429,7 @@ void cmdCallback()
   if (!have_odom.load())
     return;
   if (!vel_mode_){
-    cout << "Cannot publish velocity commands, not using auv_control mode!" << endl;
+    //cout << "Cannot publish velocity commands, not using auv_control mode!" << endl;
     return;
   }
   // unified time source
@@ -655,9 +657,9 @@ int main(int argc, char **argv)
   node->declare_parameter("gains.kp.y", 0.6);
   node->declare_parameter("gains.kp.z", 0.6);
 
-  node->declare_parameter("gains.kd.x", 0.0);
-  node->declare_parameter("gains.kd.y", 0.0);
-  node->declare_parameter("gains.kd.z", 0.0);
+  node->declare_parameter("gains.kd.x", 0.1);
+  node->declare_parameter("gains.kd.y", 0.1);
+  node->declare_parameter("gains.kd.z", 0.1);
 
   node->declare_parameter("gains.ki.x", 0.1);
   node->declare_parameter("gains.ki.y", 0.1);
@@ -667,9 +669,9 @@ int main(int argc, char **argv)
   node->declare_parameter("gains.kp_yaw.y", 0.8);
   node->declare_parameter("gains.kp_yaw.z", 0.8);
 
-  node->declare_parameter("gains.kd_yaw.x", 0.0);
-  node->declare_parameter("gains.kd_yaw.y", 0.0);
-  node->declare_parameter("gains.kd_yaw.z", 0.0);
+  node->declare_parameter("gains.kd_yaw.x", 0.1);
+  node->declare_parameter("gains.kd_yaw.y", 0.1);
+  node->declare_parameter("gains.kd_yaw.z", 0.2);
 
   node->declare_parameter("gains.ki_yaw.x", 0.1);
   node->declare_parameter("gains.ki_yaw.y", 0.1);

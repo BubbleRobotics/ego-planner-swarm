@@ -22,7 +22,10 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
-
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_eigen REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -59,7 +62,18 @@ add_library( plan_env SHARED
     src/obj_predictor.cpp 
     )
 
-ament_target_dependencies(plan_env std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp Eigen3 PCL cv_bridge message_filters pcl_conversions)
+target_include_directories(plan_env
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+
+ament_target_dependencies(plan_env
+  std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp
+  Eigen3 PCL cv_bridge message_filters pcl_conversions
+  tf2 tf2_ros tf2_geometry_msgs tf2_eigen
+)
 
 target_link_libraries( plan_env 
   ${PCL_LIBRARIES}
@@ -69,11 +83,25 @@ target_link_libraries( plan_env
 add_executable(obj_generator
     src/obj_generator.cpp 
 )
-ament_target_dependencies(obj_generator std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp Eigen3 PCL cv_bridge message_filters pcl_conversions)
+
+ament_target_dependencies(obj_generator
+  std_msgs visualization_msgs geometry_msgs nav_msgs rclcpp
+  Eigen3 PCL cv_bridge message_filters pcl_conversions
+  tf2 tf2_ros tf2_geometry_msgs tf2_eigen
+)
 
 install(TARGETS plan_env
-        DESTINATION lib
+  EXPORT export_plan_env
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
 )
+
+install(EXPORT export_plan_env
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
+
 
 install(TARGETS obj_generator
         DESTINATION lib/${PROJECT_NAME}
@@ -83,6 +111,8 @@ install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION include/${PROJECT_NAME}
 )
 
-ament_export_libraries(plan_env)
+ament_export_targets(export_plan_env HAS_LIBRARY_TARGET)
+ament_export_dependencies(tf2_ros tf2_eigen tf2 tf2_geometry_msgs)
+
 
 ament_package()

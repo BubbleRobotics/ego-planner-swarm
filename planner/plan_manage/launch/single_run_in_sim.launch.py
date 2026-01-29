@@ -20,8 +20,8 @@ def generate_launch_description():
     map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
-    
-    
+    map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='5.0')
+    obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.4')
     # Declare global parameters
     use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
@@ -39,7 +39,8 @@ def generate_launch_description():
     
     use_dynamic = LaunchConfiguration('use_dynamic', default=False)  
     use_dynamic_cmd = DeclareLaunchArgument('use_dynamic', default_value=use_dynamic, description='Use Drone Simulation Considering Dynamics or Not')
-    
+    map_reset_timer_cmd = DeclareLaunchArgument('grid_map/occ_ttl_sec', default_value=map_reset_timer, description='Map reset timer in seconds')
+    obstacles_inflation_cmd = DeclareLaunchArgument('obstacles_inflation', default_value=obstacle_inflation, description='Obstacles inflation distance')
 
     mockamap_node = Node(
         package='mockamap',
@@ -81,7 +82,7 @@ def generate_launch_description():
             
             'camera_pose_topic': 'pcl_render_node/camera_pose',
             'depth_topic': 'pcl_render_node/depth',
-            'cloud_topic': 'pcl_render_node/cloud',
+            'cloud_topic': 'camera_d455/depth/image_raw/points',
             
             'cx': str(321.04638671875),
             'cy': str(243.44969177246094),
@@ -113,7 +114,9 @@ def generate_launch_description():
             'point4_x': str(2.5),
             'point4_y': str(-7.0),
             'point4_z': str(-5.0),
-            'point_clicked_z_up': point_clicked_z_up_
+            'point_clicked_z_up': point_clicked_z_up_,
+            'grid_map/occ_ttl_sec': map_reset_timer,
+            'obstacles_inflation': obstacle_inflation
             
         }.items()
     )
@@ -180,7 +183,9 @@ def generate_launch_description():
     ld.add_action(drone_id_cmd)
     ld.add_action(use_dynamic_cmd)
     ld.add_action(use_mockamap_cmd)
-
+    ld.add_action(map_reset_timer_cmd)
+    ld.add_action(obstacles_inflation_cmd)
+    ld.add_action(point_clicked_z_up_cmd)
     # Add Map Generator node
     ld.add_action(mockamap_node)
     ld.add_action(advanced_param_include)

@@ -23,6 +23,15 @@
 #include <message_filters/time_synchronizer.h>
 
 #include <plan_env/raycast.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/create_timer_ros.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/common/transforms.h>
 
 #define logit(x) (log((x) / (1 - (x))))
 
@@ -58,7 +67,7 @@ struct MappingParameters
   double obstacles_inflation_;
   string frame_id_;
   int pose_type_;
-
+  double occ_ttl_sec_;
   /* camera parameters */
   double cx_, cy_, fx_, fy_;
 
@@ -97,6 +106,9 @@ struct MappingData
 
   std::vector<double> occupancy_buffer_;
   std::vector<char> occupancy_buffer_inflate_;
+  std::vector<float> occ_last_seen_; 
+
+  
 
   // camera position and pose data
 
@@ -119,6 +131,7 @@ struct MappingData
   rclcpp::Time last_occ_update_time_;
   bool flag_depth_odom_timeout_;
   bool flag_use_depth_fusion;
+
 
   // depth image projected point cloud
 
@@ -210,7 +223,7 @@ private:
   void depthOdomCallback(const sensor_msgs::msg::Image::ConstPtr &img, const nav_msgs::msg::Odometry::ConstPtr &odom);
   void cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &img);
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom);
-
+  void expireOccupiedVoxels(float ttl_sec);
   // update occupancy by raycasting
   void updateOccupancyCallback();
   void visCallback();
@@ -253,6 +266,13 @@ private:
 
   rclcpp::TimerBase::SharedPtr occ_timer_;
   rclcpp::TimerBase::SharedPtr vis_timer_;
+  
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::string cloud_target_frame_ = "odom";  
+  double cloud_tf_timeout_sec_ = 0.2;
+  double cloud_max_range_ = 5.0;
+  int cloud_stride_ = 1;
 
   //
   uniform_real_distribution<double> rand_noise_;

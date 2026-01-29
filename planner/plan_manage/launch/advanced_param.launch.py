@@ -43,6 +43,8 @@ def generate_launch_description():
     point4_y = LaunchConfiguration('point4_y', default=30.0)
     point4_z = LaunchConfiguration('point4_z', default=1.0)
 
+    map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='1.0')
+    obstacles_inflation = LaunchConfiguration('obstacles_inflation', default='0.4')
     # MANUAL_TARGET = 1, PRESET_TARGET = 2
     flight_type = LaunchConfiguration('flight_type', default=2)
     use_distinctive_trajs = LaunchConfiguration('use_distinctive_trajs', default=True)
@@ -92,7 +94,8 @@ def generate_launch_description():
     obj_num_set_arg = DeclareLaunchArgument('obj_num_set', default_value=obj_num_set, description='Number of objects')
     drone_id_arg = DeclareLaunchArgument('drone_id', default_value=drone_id, description='Drone ID')
     point_clicked_z_up_arg = DeclareLaunchArgument('point_clicked_z_up', default_value=point_clicked_z_up_, description='Default z-value (up) for rviz clicked points (new goal of planner)')
-    
+    map_reset_timer_arg = DeclareLaunchArgument('grid_map/occ_ttl_sec', default_value=map_reset_timer, description='Map reset timer in seconds')
+    obstacles_inflation_arg = DeclareLaunchArgument('obstacles_inflation', default_value=obstacles_inflation, description='Obstacles inflation distance')
     # Ego Planner Node
     ego_planner_node = Node(
         package='ego_planner',
@@ -113,7 +116,7 @@ def generate_launch_description():
             ('a_star_list', ['ego_plan_vis/a_star_list']),
             
             ('grid_map/odom', ['odometry/filtered_enu']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
-            ('grid_map/cloud', ['/stereo/point_cloud']), # TODO change remapping OLD: ['ego_', cloud_topic]
+            ('grid_map/cloud', [cloud_topic]), 
             ('grid_map/pose', ['ego_', camera_pose_topic]),
             ('grid_map/depth', ['ego_', depth_topic]),
             ('grid_map/occupancy_inflate', ['ego_grid/grid_map/occupancy_inflate'])
@@ -154,7 +157,7 @@ def generate_launch_description():
             {'grid_map/local_update_range_x': 5.0},
             {'grid_map/local_update_range_y': 5.0},
             {'grid_map/local_update_range_z': 5.0},
-            {'grid_map/obstacles_inflation': 0.35},
+            {'grid_map/obstacles_inflation': obstacles_inflation},
             {'grid_map/local_map_margin': 10},
             {'grid_map/ground_height': -13.0},
             # camera parameter
@@ -181,9 +184,10 @@ def generate_launch_description():
             
             {'grid_map/virtual_ceil_height': -0.5},
             {'grid_map/visualization_truncate_height': 1.8},
-            {'grid_map/show_occ_time': False},
+            {'grid_map/occ_ttl_sec"': map_reset_timer},
             {'grid_map/pose_type': 1},
             {'grid_map/frame_id': "odom"},
+            {'grid_map/point_cloud_target_frame': "odom"},
             # planner manager
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},
@@ -252,7 +256,8 @@ def generate_launch_description():
     ld.add_action(point4_x_arg)
     ld.add_action(point4_y_arg)
     ld.add_action(point4_z_arg)
-    
+    ld.add_action(map_reset_timer_arg)
+    ld.add_action(point_clicked_z_up_arg)
     ld.add_action(flight_type_arg)
     ld.add_action(use_distinctive_trajs_arg)
     ld.add_action(obj_num_set_arg)
