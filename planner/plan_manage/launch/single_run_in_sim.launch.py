@@ -21,7 +21,7 @@ def generate_launch_description():
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='5.0')
-    obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.4')
+    obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.05')
     # Declare global parameters
     use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
