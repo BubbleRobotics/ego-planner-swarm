@@ -46,8 +46,6 @@ namespace ego_planner
 
     double getSwarmClearance(void) { return bspline_optimizer_->getSwarmClearance(); }
 
-    bool checkCollision(int drone_id);
-
     void setMaxVelAcc(float max_vel, float max_acc);
 
 

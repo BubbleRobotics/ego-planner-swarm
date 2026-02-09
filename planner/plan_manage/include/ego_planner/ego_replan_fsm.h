@@ -132,9 +132,7 @@ namespace ego_planner
     void odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg);
     void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg);
     void swarmTrajsCallback(const std::shared_ptr<const traj_utils::msg::MultiBsplines> &msg);
-    void BroadcastBsplineCallback(const std::shared_ptr<const traj_utils::msg::Bspline> &msg);
 
-    bool checkCollision();
     void publishSwarmTrajs(bool startup_pub);
 
   public:

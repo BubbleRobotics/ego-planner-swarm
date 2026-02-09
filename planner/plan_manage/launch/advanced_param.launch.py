@@ -8,8 +8,8 @@ def generate_launch_description():
     # LaunchConfigurations
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
 
-    map_size_x = LaunchConfiguration('map_size_x_', default=42.0)
-    map_size_y = LaunchConfiguration('map_size_y_', default=30.0)
+    map_size_x = LaunchConfiguration('map_size_x_', default=40.0)
+    map_size_y = LaunchConfiguration('map_size_y_', default=40.0)
     map_size_z = LaunchConfiguration('map_size_z_', default=13.0)
     
     odometry_topic = LaunchConfiguration('odometry_topic', default='odom')
@@ -43,7 +43,7 @@ def generate_launch_description():
     point4_y = LaunchConfiguration('point4_y', default=30.0)
     point4_z = LaunchConfiguration('point4_z', default=1.0)
 
-    map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='1.0')
+    map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='5.0')
     obstacles_inflation = LaunchConfiguration('obstacles_inflation', default='0.4')
     # MANUAL_TARGET = 1, PRESET_TARGET = 2
     flight_type = LaunchConfiguration('flight_type', default=2)
@@ -159,7 +159,6 @@ def generate_launch_description():
             {'grid_map/local_update_range_z': 5.0},
             {'grid_map/obstacles_inflation': obstacles_inflation},
             {'grid_map/local_map_margin': 10},
-            {'grid_map/ground_height': -13.0},
             # camera parameter
             {'grid_map/cx': cx},
             {'grid_map/cy': cy},
@@ -182,8 +181,7 @@ def generate_launch_description():
             {'grid_map/min_ray_length': 0.1},
             {'grid_map/max_ray_length': 4.5},
             
-            {'grid_map/virtual_ceil_height': -0.5},
-            {'grid_map/visualization_truncate_height': 1.8},
+            {'grid_map/visualization_truncate_height': 0.1},
             {'grid_map/occ_ttl_sec"': map_reset_timer},
             {'grid_map/pose_type': 1},
             {'grid_map/frame_id': "odom"},
@@ -258,6 +256,7 @@ def generate_launch_description():
     ld.add_action(point4_z_arg)
     ld.add_action(map_reset_timer_arg)
     ld.add_action(point_clicked_z_up_arg)
+    ld.add_action(obstacles_inflation_arg)
     ld.add_action(flight_type_arg)
     ld.add_action(use_distinctive_trajs_arg)
     ld.add_action(obj_num_set_arg)

@@ -91,7 +91,7 @@ struct MappingParameters
   int local_map_margin_;
 
   /* visualization and computation time display */
-  double visualization_truncate_height_, virtual_ceil_height_, ground_height_, virtual_ceil_yp_, virtual_ceil_yn_;
+  double visualization_truncate_height_;
   bool show_occ_time_;
 
   /* active mapping */

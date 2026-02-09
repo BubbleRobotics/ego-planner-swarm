@@ -36,14 +36,10 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->declare_parameter("grid_map/min_ray_length", -0.1);
   node_->declare_parameter("grid_map/max_ray_length", -0.1);
   node_->declare_parameter("grid_map/visualization_truncate_height", -0.1);
-  node_->declare_parameter("grid_map/virtual_ceil_height", -0.1);
-  node_->declare_parameter("grid_map/virtual_ceil_yp", -0.1);
-  node_->declare_parameter("grid_map/virtual_ceil_yn", -0.1);
   node_->declare_parameter("grid_map/show_occ_time", false);
   node_->declare_parameter("grid_map/pose_type", 1);
   node_->declare_parameter("grid_map/frame_id", "odom");
   node_->declare_parameter("grid_map/local_map_margin", 1);
-  node_->declare_parameter("grid_map/ground_height", -13.0);
   node_->declare_parameter("grid_map/odom_depth_timeout", 1.0);
   node_->declare_parameter("grid_map/occ_ttl_sec", 1.0);
 
@@ -74,25 +70,18 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->get_parameter("grid_map/min_ray_length", mp_.min_ray_length_);
   node_->get_parameter("grid_map/max_ray_length", mp_.max_ray_length_);
   node_->get_parameter("grid_map/visualization_truncate_height", mp_.visualization_truncate_height_);
-  node_->get_parameter("grid_map/virtual_ceil_height", mp_.virtual_ceil_height_);
-  node_->get_parameter("grid_map/virtual_ceil_yp", mp_.virtual_ceil_yp_);
-  node_->get_parameter("grid_map/virtual_ceil_yn", mp_.virtual_ceil_yn_);
   node_->get_parameter("grid_map/show_occ_time", mp_.show_occ_time_);
   node_->get_parameter("grid_map/pose_type", mp_.pose_type_);
   node_->get_parameter("grid_map/frame_id", mp_.frame_id_);
   node_->get_parameter("grid_map/local_map_margin", mp_.local_map_margin_);
-  node_->get_parameter("grid_map/ground_height", mp_.ground_height_);
   node_->get_parameter("grid_map/odom_depth_timeout", mp_.odom_depth_timeout_);
-  node_->get_parameter("grid_map/occ_ttl_sec", mp_.occ_ttl_sec_);  // add to mp_
+  node_->get_parameter("grid_map/occ_ttl_sec", mp_.occ_ttl_sec_); 
 
-
-  if (mp_.virtual_ceil_height_ - mp_.ground_height_ > z_size)
-  {
-    mp_.virtual_ceil_height_ = mp_.ground_height_ + z_size;
-  }
 
   mp_.resolution_inv_ = 1 / mp_.resolution_;
-  mp_.map_origin_ = Eigen::Vector3d(-x_size / 2.0, -y_size / 2.0, mp_.ground_height_);
+  // initialize map properties, maximum z is water surface level (0m depth)
+  // TODO maybe center map origin at the initial camera position instead of fixed at the center of the map, to reduce the chance of leaving the map range when the camera moves.
+  mp_.map_origin_ = Eigen::Vector3d(-x_size / 2.0, -y_size / 2.0, -z_size);
   mp_.map_size_ = Eigen::Vector3d(x_size, y_size, z_size);
 
   mp_.prob_hit_log_ = logit(mp_.p_hit_);
@@ -115,14 +104,12 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   mp_.map_max_boundary_ = mp_.map_origin_ + mp_.map_size_;
 
   // initialize data buffers
-
   int buffer_size = mp_.map_voxel_num_(0) * mp_.map_voxel_num_(1) * mp_.map_voxel_num_(2);
 
   md_.occupancy_buffer_ = vector<double>(buffer_size, mp_.clamp_min_log_ - mp_.unknown_flag_);
   md_.occupancy_buffer_inflate_ = vector<char>(buffer_size, 0);
-  // after buffer_size computed:
-  md_.occ_last_seen_ = std::vector<float>(buffer_size, -1e9f);  // "never seen"
 
+  md_.occ_last_seen_ = std::vector<float>(buffer_size, -1e9f); 
 
   md_.count_hit_and_miss_ = vector<short>(buffer_size, 0);
   md_.count_hit_ = vector<short>(buffer_size, 0);
@@ -179,7 +166,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
 
   // 定时器
   occ_timer_ = node_->create_timer(
-      std::chrono::duration<double>(0.05),
+      std::chrono::duration<double>(0.5),
       std::bind(&GridMap::updateOccupancyCallback, this));
 
   vis_timer_ = node_->create_timer(
@@ -414,7 +401,9 @@ void GridMap::projectDepthImage()
 void GridMap::expireOccupiedVoxels(float ttl_sec)
 {
   const float now_s = static_cast<float>(node_->now().seconds());
-
+  
+  // Only check voxels in the local update range around the camera, to save time. 
+  // TODO check if updating the entire map once every few seconds is needed to handle cases where the camera moves fast and leaves old occupied voxels behind.
   Eigen::Vector3i min_id = md_.local_bound_min_;
   Eigen::Vector3i max_id = md_.local_bound_max_;
 
@@ -423,7 +412,7 @@ void GridMap::expireOccupiedVoxels(float ttl_sec)
   max_id += Eigen::Vector3i(pad, pad, pad);
   boundIndex(min_id);
   boundIndex(max_id);
-
+  // Loop through voxels in the local update range and clear those that are occupied but haven't been observed for longer than ttl_sec.
   for (int x = min_id(0); x <= max_id(0); ++x)
     for (int y = min_id(1); y <= max_id(1); ++y)
       for (int z = min_id(2); z <= max_id(2); ++z)
@@ -436,7 +425,7 @@ void GridMap::expireOccupiedVoxels(float ttl_sec)
           if ((now_s - md_.occ_last_seen_[idx]) > ttl_sec)
           {
             md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-            md_.occupancy_buffer_inflate_[idx] = 0;
+            //md_.occupancy_buffer_inflate_[idx] = 0;
           }
         }
       }
@@ -616,15 +605,14 @@ Eigen::Vector3d GridMap::closetPointInMap(const Eigen::Vector3d &pt, const Eigen
   }
 
   return camera_pt + (min_t - 1e-3) * diff;
+  
 }
 
 void GridMap::clearAndInflateLocalMap()
 {
   /*clear outside local*/
+  // Clear up to vec_margin voxels outside the local bound to avoid old occupied voxels outside the local bound affecting the planning. 
   const int vec_margin = 5;
-  // Eigen::Vector3i min_vec_margin = min_vec - Eigen::Vector3i(vec_margin,
-  // vec_margin, vec_margin); Eigen::Vector3i max_vec_margin = max_vec +
-  // Eigen::Vector3i(vec_margin, vec_margin, vec_margin);
 
   Eigen::Vector3i min_cut = md_.local_bound_min_ -
                             Eigen::Vector3i(mp_.local_map_margin_, mp_.local_map_margin_, mp_.local_map_margin_);
@@ -639,7 +627,6 @@ void GridMap::clearAndInflateLocalMap()
   boundIndex(max_cut_m);
 
   // clear data outside the local range
-
   for (int x = min_cut_m(0); x <= max_cut_m(0); ++x)
     for (int y = min_cut_m(1); y <= max_cut_m(1); ++y)
     {
@@ -655,7 +642,7 @@ void GridMap::clearAndInflateLocalMap()
       {
         int idx = toAddress(x, y, z);
         md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.occupancy_buffer_inflate_[idx] = 0;   // <-- ADD THIS
+        md_.occupancy_buffer_inflate_[idx] = 0;   
       }
     }
 
@@ -667,14 +654,14 @@ void GridMap::clearAndInflateLocalMap()
       {
         int idx = toAddress(x, y, z);
         md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.occupancy_buffer_inflate_[idx] = 0;   // <-- ADD THIS
+        md_.occupancy_buffer_inflate_[idx] = 0;   
       }
 
       for (int y = max_cut(1) + 1; y <= max_cut_m(1); ++y)
       {
         int idx = toAddress(x, y, z);
         md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.occupancy_buffer_inflate_[idx] = 0;   // <-- ADD THIS
+        md_.occupancy_buffer_inflate_[idx] = 0;   
       }
     }
 
@@ -686,14 +673,14 @@ void GridMap::clearAndInflateLocalMap()
       {
         int idx = toAddress(x, y, z);
         md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.occupancy_buffer_inflate_[idx] = 0;   // <-- ADD THIS
+        md_.occupancy_buffer_inflate_[idx] = 0;   
       }
 
       for (int x = max_cut(0) + 1; x <= max_cut_m(0); ++x)
       {
         int idx = toAddress(x, y, z);
         md_.occupancy_buffer_[idx] = mp_.clamp_min_log_ - mp_.unknown_flag_;
-        md_.occupancy_buffer_inflate_[idx] = 0;   // <-- ADD THIS
+        md_.occupancy_buffer_inflate_[idx] = 0;   
       }
     }
 
@@ -705,7 +692,7 @@ void GridMap::clearAndInflateLocalMap()
   // inf_pts.resize(4 * inf_step + 3);
   Eigen::Vector3i inf_pt;
 
-  // clear outdated data
+  // clear outdated (all) data in local bound
   for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
     for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
       for (int z = md_.local_bound_min_(2); z <= md_.local_bound_max_(2); ++z)
@@ -714,7 +701,7 @@ void GridMap::clearAndInflateLocalMap()
       }
   
 
-  // inflate obstacles
+  // inflate obstacles from updated occupancy buffer
   for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
     for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
       for (int z = md_.local_bound_min_(2); z <= md_.local_bound_max_(2); ++z)
@@ -737,17 +724,6 @@ void GridMap::clearAndInflateLocalMap()
           }
         }
       }
-
-  // add virtual ceiling to limit flight height
-  if (mp_.virtual_ceil_height_ > -0.5)
-  {
-    int ceil_id = floor((mp_.virtual_ceil_height_ - mp_.map_origin_(2)) * mp_.resolution_inv_) - 1;
-    for (int x = md_.local_bound_min_(0); x <= md_.local_bound_max_(0); ++x)
-      for (int y = md_.local_bound_min_(1); y <= md_.local_bound_max_(1); ++y)
-      {
-        md_.occupancy_buffer_inflate_[toAddress(x, y, ceil_id)] = 1;
-      }
-  }
 }
 
 void GridMap::visCallback()
@@ -758,49 +734,42 @@ void GridMap::visCallback()
 
 void GridMap::updateOccupancyCallback()
 {
+
+  // Ensure we have a valid last update time
   if (md_.last_occ_update_time_.seconds() < 1.0)
     md_.last_occ_update_time_ = node_->now();
-
-  if (!md_.occ_need_update_)
+  // Directly return if we don't have cloud or odometry, to avoid unnecessary updates.
+  if (!md_.has_cloud_ || !md_.has_odom_)
   {
-    if (md_.flag_use_depth_fusion &&
-        (node_->now() - md_.last_occ_update_time_).seconds() > mp_.odom_depth_timeout_)
-    {
-      RCLCPP_ERROR(node_->get_logger(),
-                   "odom or depth lost! now=%f, last_occ_update_time=%f, odom_depth_timeout=%f",
-                   node_->now().seconds(),
-                   md_.last_occ_update_time_.seconds(),
-                   mp_.odom_depth_timeout_);
-      md_.flag_depth_odom_timeout_ = true;
-    }
     return;
   }
+
+  // Once we have cloud, start with expiring old occupied voxels to clear the map.
+  // Even if we don't have new depth images or odometry, we still want to clear old occupied voxels based on their last seen time.
+  expireOccupiedVoxels(static_cast<float>(mp_.occ_ttl_sec_));
+  if (md_.local_updated_)
+  {
+    clearAndInflateLocalMap();
+  }
+  
+  if (md_.flag_use_depth_fusion &&
+      (node_->now() - md_.last_occ_update_time_).seconds() > mp_.odom_depth_timeout_)
+  {
+    RCLCPP_ERROR(node_->get_logger(),
+                  "odom or depth lost! now=%f, last_occ_update_time=%f, odom_depth_timeout=%f",
+                  node_->now().seconds(),
+                  md_.last_occ_update_time_.seconds(),
+                  mp_.odom_depth_timeout_);
+    md_.flag_depth_odom_timeout_ = true;
+    return;
+  }
+  
+  
   md_.last_occ_update_time_ = node_->now();
 
-  /* update occupancy */
-  // ros::Time t1, t2, t3, t4;
-  // t1 = ros::Time::now();
-
-  //projectDepthImage();
-  // t2 = ros::Time::now();
   //raycastProcess();
-  // t3 = ros::Time::now();
-  expireOccupiedVoxels(static_cast<float>(mp_.occ_ttl_sec_));
 
-  if (md_.local_updated_)
-    clearAndInflateLocalMap();
 
-  // t4 = ros::Time::now();
-
-  // cout << setprecision(7);
-  // cout << "t2=" << (t2-t1).toSec() << " t3=" << (t3-t2).toSec() << " t4=" << (t4-t3).toSec() << endl;;
-
-  // md_.fuse_time_ += (t2 - t1).toSec();
-  // md_.max_fuse_time_ = max(md_.max_fuse_time_, (t2 - t1).toSec());
-
-  // if (mp_.show_occ_time_)
-  //   ROS_WARN("Fusion: cur t = %lf, avg t = %lf, max t = %lf", (t2 - t1).toSec(),
-  //            md_.fuse_time_ / md_.update_num_, md_.max_fuse_time_);
 
   md_.occ_need_update_ = false;
   md_.local_updated_ = false;
@@ -863,14 +832,19 @@ void GridMap::odomCallback(const nav_msgs::msg::Odometry::SharedPtr odom)
 
 void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &msg)
 {
+
   md_.has_cloud_ = true;
 
   if (!md_.has_odom_) return; 
   if (!tf_buffer_) return;
-   // Convert cloud -> PCL
+
+  // Convert PointCloud2 -> PCL
   pcl::PointCloud<pcl::PointXYZ> cloud_in;
   pcl::fromROSMsg(*msg, cloud_in);
-  if (cloud_in.empty()) return;
+
+  if (cloud_in.empty()){
+    return;
+  }
 
   geometry_msgs::msg::TransformStamped tf;
   try {
@@ -885,58 +859,52 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &msg)
     return;
   }
 
-  // Build Eigen transform
+  // Build Eigen transform matrix from TF
   Eigen::Isometry3d T = tf2::transformToEigen(tf.transform);
   Eigen::Matrix4f Tf = T.matrix().cast<float>();
 
   // Transform points into target frame
-  pcl::PointCloud<pcl::PointXYZ> latest_cloud;
-  pcl::fromROSMsg(*msg, latest_cloud);
-
   const float now_s = static_cast<float>(node_->now().seconds());
 
-  // IMPORTANT: mark we have an update coming from cloud
+  // mark we have an update coming from cloud
+  // for the occupancy update to process this new cloud and update the map.
   md_.occ_need_update_ = true;
-  md_.flag_use_depth_fusion = false;   // (optional) avoid "depth/odom lost" logic for this pipeline
+  md_.flag_use_depth_fusion = false;  
 
-  //const float max_r2 = static_cast<float>(cloud_max_range_ * cloud_max_range_);
-  //const int stride = std::max(1, cloud_stride_);
-
-  int i = 0;
+  // Iterate trough points, transform, update occupancy buffer and time last seen
   for (const auto &pt_s : cloud_in.points)
   {
-    // stride downsample
-    //if ((i++ % stride) != 0) continue;
-
+ 
     if (!std::isfinite(pt_s.x) || !std::isfinite(pt_s.y) || !std::isfinite(pt_s.z)) continue;
 
-    //const float r2 = pt_s.x*pt_s.x + pt_s.y*pt_s.y + pt_s.z*pt_s.z;
-    //if (r2 > max_r2) continue;
-
-    // Transform this single point (sensor->odom)
+    // Transform single point
     Eigen::Vector4f ps(pt_s.x, pt_s.y, pt_s.z, 1.0f);
     Eigen::Vector4f po = Tf * ps;
 
     Eigen::Vector3d p3d(po.x(), po.y(), po.z());
 
-    // only keep points near robot (same logic you already have)
+    // only keep points near robot
     Eigen::Vector3d devi = p3d - md_.camera_pos_;
+
     if (fabs(devi(0)) > mp_.local_update_range_(0) ||
         fabs(devi(1)) > mp_.local_update_range_(1) ||
         fabs(devi(2)) > mp_.local_update_range_(2))
-      continue;
+        {continue;}
 
+    // Convert to grid index and check if in map bounds
     Eigen::Vector3i id;
     posToIndex(p3d, id);
-    if (!isInMap(id)) continue;
+
+    if (!isInMap(id)) {
+      
+      continue;}
 
     const int idx = toAddress(id);
 
     // Update base occupancy (log-odds)
-    // (simple "set occupied strongly"; you can also do += prob_hit_log_ with clamping)
     md_.occupancy_buffer_[idx] = std::min(md_.occupancy_buffer_[idx] + mp_.prob_hit_log_, mp_.clamp_max_log_);
-
-    // TTL: remember last observation time for this voxel
+    
+    // remember last observation time for this voxel
     md_.occ_last_seen_[idx] = now_s;
   }
 

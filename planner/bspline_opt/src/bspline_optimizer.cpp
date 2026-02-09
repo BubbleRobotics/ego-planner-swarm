@@ -1267,14 +1267,16 @@ namespace ego_planner
           RCLCPP_ERROR(rclcpp::get_logger("check_collision_and_rebound"),
                       "ERROR! the drone is inside an obstacle. This should not happen.");
 
-          for (int t = 0; t < cps_.size; ++t)
+          // For debugging:
+          // Print the occupancy status of all control points when no collision free path is found
+          /*for (int t = 0; t < cps_.size; ++t)
           {
             Eigen::Vector3d p = cps_.points.col(t);
             bool occ_here = grid_map_->getInflateOccupancy(p);
-            /*RCLCPP_ERROR(rclcpp::get_logger("check_collision_and_rebound"),
+            RCLCPP_ERROR(rclcpp::get_logger("check_collision_and_rebound"),
                         "CP %d: (%.2f, %.2f, %.2f) occ=%d",
-                        t, p.x(), p.y(), p.z(), (int)occ_here);*/
-          }
+                        t, p.x(), p.y(), p.z(), (int)occ_here);
+          }*/
 
           in_id = 0;
         }

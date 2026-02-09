@@ -38,7 +38,6 @@ namespace ego_planner
     grid_map_.reset(new GridMap);
     // grid_map_->initMap(nh);
     grid_map_->initMap(node);
-
     bspline_optimizer_.reset(new BsplineOptimizer);
     // bspline_optimizer_->setParam(nh);
     bspline_optimizer_->setParam(node);
@@ -105,9 +104,9 @@ namespace ego_planner
     rclcpp::Duration t_init(0, 0), t_opt(0, 0), t_refine(0, 0);
 
     /*** STEP 1: INIT
-    Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 0.5×. TODO check if setting this lower was correct
+    Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 5×.
     ***/
-    double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 0.5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
+    double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 5.0; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
     //std::cout << "Initial ts: " << ts << "and dist:" << (start_pt - local_target_pt).norm() << std::endl;
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
     static bool flag_first_call = true, flag_force_polynomial = false;
@@ -190,11 +189,9 @@ namespace ego_planner
       }
       else // Initial path generated from previous trajectory.
       {
-        //std::cout << "Starting point: " << start_pt << std::endl;
-        //std::cout << "From Previous polynomial trajectory." << std::endl;
+
         double t;
         double t_cur = (node_->get_clock()->now() - local_data_.start_time_).seconds();
-        //std::cout << "Start point" << start_pt << "local_target:" << local_data_.position_traj_.evaluateDeBoorT(t_cur) << std::endl;
 
         vector<double> pseudo_arc_length;
         vector<Eigen::Vector3d> segment_point;
@@ -239,21 +236,21 @@ namespace ego_planner
         
         point_set.clear();
 
-        // 1) Try to use previous trajectory if it is valid
+        // Use previous trajectory if it is valid
         bool used_prev_traj = false;
         if (pseudo_arc_length.size() >= 2) {
           double total_length = pseudo_arc_length.back();
 
           if (std::isfinite(total_length) && total_length > 1e-3) {
-            // --- your sampling loop with a safety cap ---
+            // sampling loop with a safety cap 
             double sample_length = 0.0;
-            double cps_dist = pp_.ctrl_pt_dist * 1.5;
             size_t id = 0;
 
             int outer_iter = 0;
             do {
               if (++outer_iter > 30) {  // safety to avoid hanging forever
                 std::cout << "Sampling loop did not converge, break.\n";
+                point_set.clear();
                 break;
               }
 
@@ -280,35 +277,33 @@ namespace ego_planner
               }
               point_set.push_back(local_target_pt);
             } while (point_set.size() < 7); // If the start point is very close to end point, this will help
-            std::cout << "Starting point after: " << point_set[0] << std::endl;
+            
             if (!point_set.empty())
               used_prev_traj = true;
           }
         }
 
-        // 2) Fallback: straight-line initial path if previous trajectory is unusable
+        // Fallback: straight-line initial path if previous trajectory is unusable
         if (!used_prev_traj) {
           std::cout << "[B-spline init] using fallback straight-line path.\n";
-
-          Eigen::Vector3d start_pt = local_data_.position_traj_.evaluateDeBoorT(t_cur);
-          Eigen::Vector3d end_pt   = local_target_pt;
-
-          double dist = (end_pt - start_pt).norm();
-          // Uniform Bspline planner needs at least 4 control points
-          int num_pts = std::max(4, int(dist / pp_.ctrl_pt_dist) + 1);
-
-          point_set.clear();
-          for (int i = 0; i < num_pts; ++i) {
-            double alpha = (num_pts == 1) ? 0.0 : double(i) / double(num_pts - 1);
-            point_set.push_back(start_pt + alpha * (end_pt - start_pt));
+          
+          if (!tryStraightLinePlan(start_pt, start_vel, start_acc, local_target_pt, local_target_vel)) {
+            std::cout << "[B-spline init] fallback straight-line path blocked/infeasible.\n";
+            continous_failures_count_++;
+            return false; 
+          }
+          else
+          {
+            // If straight-line plan succeeded, the trajectory has already been updated and visualized in tryStraightLinePlan, so we can return early.
+            return true;
           }
         }
 
-        // 3) Final safety check before parameterization
+        // Final safety check before parameterization
         if (point_set.size() < 4) {
           std::cout << "[B-spline] point_set too small (" << point_set.size()
                     << "), aborting.\n";
-          return false;  // or force another high-level replan
+          return false;  
         }
 
         start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(t_cur));
@@ -467,33 +462,6 @@ namespace ego_planner
     return true;
   }
 
-  bool EGOPlannerManager::checkCollision(int drone_id)
-  {
-    // if (local_data_.start_time_.toSec() < 1e9) // It means my first planning has not started
-    if (local_data_.start_time_.seconds() < 1e9)
-    {
-      cout << "If we are here, that is very bad!" << endl;
-      return false;
-    }
-
-    // double my_traj_start_time = local_data_.start_time_.toSec();
-    // double other_traj_start_time = swarm_trajs_buf_[drone_id].start_time_.toSec();
-    double my_traj_start_time = local_data_.start_time_.seconds();
-    double other_traj_start_time = swarm_trajs_buf_[drone_id].start_time_.seconds();
-
-    double t_start = max(my_traj_start_time, other_traj_start_time);
-    double t_end = min(my_traj_start_time + local_data_.duration_ * 2 / 3, other_traj_start_time + swarm_trajs_buf_[drone_id].duration_);
-    cout << "Start time:" << t_start << "End time:" << t_end << endl;
-    for (double t = t_start; t < t_end; t += 0.03)
-    {
-      if ((local_data_.position_traj_.evaluateDeBoorT(t - my_traj_start_time) - swarm_trajs_buf_[drone_id].position_traj_.evaluateDeBoorT(t - other_traj_start_time)).norm() < bspline_optimizer_->getSwarmClearance())
-      {
-        return true;
-      }
-    }
-
-    return false;
-  }
 
   bool EGOPlannerManager::planGlobalTrajWaypoints(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel, const Eigen::Vector3d &start_acc,
                                                   const std::vector<Eigen::Vector3d> &waypoints, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc)

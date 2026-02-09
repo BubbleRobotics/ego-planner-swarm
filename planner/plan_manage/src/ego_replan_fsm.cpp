@@ -55,9 +55,7 @@ namespace ego_planner
 
     /* initialize main modules */
     visualization_.reset(new PlanningVisualization(node_));
-
     planner_manager_.reset(new EGOPlannerManager);
-
     planner_manager_->initPlanModules(node_, visualization_);
 
     planner_manager_->deliverTrajToOptimizer(); // store trajectories
@@ -118,13 +116,6 @@ namespace ego_planner
     swarm_trajs_pub_ = node_->create_publisher<traj_utils::msg::MultiBsplines>(pub_topic_name, 10);
 
     broadcast_bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/broadcast_bspline_from_planner", 10);
-    broadcast_bspline_sub_ = node_->create_subscription<traj_utils::msg::Bspline>(
-        "planning/broadcast_bspline_to_planner",
-        100,
-        [this](const std::shared_ptr<const traj_utils::msg::Bspline> &msg)
-        {
-          this->BroadcastBsplineCallback(msg);
-        });
 
     bspline_pub_ = node_->create_publisher<traj_utils::msg::Bspline>("planning/bspline", 10);
     data_disp_pub_ = node_->create_publisher<traj_utils::msg::DataDisp>("planning/data_display", 100);
@@ -316,93 +307,6 @@ namespace ego_planner
     have_odom_ = true;
   }
 
-  void EGOReplanFSM::BroadcastBsplineCallback(const std::shared_ptr<const traj_utils::msg::Bspline> &msg)
-  {
-    size_t id = msg->drone_id;
-    if ((int)id == planner_manager_->pp_.drone_id)
-      return;
-
-    // if (abs((ros::Time::now() - msg->start_time).toSec()) > 0.25)
-    
-    rclcpp::Time msg_time(msg->start_time);  // default is RCL_ROS_TIME
-
-    // RCLCPP_INFO(node_->get_logger(), "Clock type: %d", node_->get_clock()->now().get_clock_type());
-    // RCLCPP_INFO(node_->get_logger(), "Start time clock type: %d", rclcpp::Time(msg->start_time).get_clock_type());
-    // RCLCPP_INFO(node_->get_logger(), "msg_time: %d", msg_time.get_clock_type());
-    if (abs((node_->get_clock()->now() - msg_time).seconds()) > 0.25)
-    {
-      // ROS_ERROR("Time difference is too large! Local - Remote Agent %d = %fs", msg->drone_id, (ros::Time::now() - msg->start_time).toSec());
-      RCLCPP_ERROR(node_->get_logger(), "Time difference is too large! Local - Remote Agent %d = %fs",
-                   msg->drone_id, (node_->get_clock()->now() - msg_time).seconds());
-      return;
-    }
-
-    // Initialize trajectory buffer.
-    if (planner_manager_->swarm_trajs_buf_.size() <= id)
-    {
-      for (size_t i = planner_manager_->swarm_trajs_buf_.size(); i <= id; i++)
-      {
-        OneTrajDataOfSwarm blank;
-        blank.drone_id = -1;
-        planner_manager_->swarm_trajs_buf_.push_back(blank);
-      }
-    }
-
-    /* Test distance to the agent */
-    Eigen::Vector3d cp0(msg->pos_pts[0].x, msg->pos_pts[0].y, msg->pos_pts[0].z);
-    Eigen::Vector3d cp1(msg->pos_pts[1].x, msg->pos_pts[1].y, msg->pos_pts[1].z);
-    Eigen::Vector3d cp2(msg->pos_pts[2].x, msg->pos_pts[2].y, msg->pos_pts[2].z);
-    Eigen::Vector3d swarm_start_pt = (cp0 + 4 * cp1 + cp2) / 6;
-    if ((swarm_start_pt - odom_pos_).norm() > planning_horizen_ * 4.0f / 3.0f)
-    {
-      planner_manager_->swarm_trajs_buf_[id].drone_id = -1;
-      return; // if the current drone is too far to the received agent.
-    }
-
-    /* Store data */
-    Eigen::MatrixXd pos_pts(3, msg->pos_pts.size());
-    Eigen::VectorXd knots(msg->knots.size());
-    for (size_t j = 0; j < msg->knots.size(); ++j)
-    {
-      knots(j) = msg->knots[j];
-    }
-    for (size_t j = 0; j < msg->pos_pts.size(); ++j)
-    {
-      pos_pts(0, j) = msg->pos_pts[j].x;
-      pos_pts(1, j) = msg->pos_pts[j].y;
-      pos_pts(2, j) = msg->pos_pts[j].z;
-    }
-
-    planner_manager_->swarm_trajs_buf_[id].drone_id = id;
-
-    // Calculate the trajectory duration.
-    if (msg->order % 2)
-    {
-      double cutback = (double)msg->order / 2 + 1.5;
-      planner_manager_->swarm_trajs_buf_[id].duration_ = msg->knots[msg->knots.size() - ceil(cutback)];
-    }
-    else
-    {
-      double cutback = (double)msg->order / 2 + 1.5;
-      planner_manager_->swarm_trajs_buf_[id].duration_ = (msg->knots[msg->knots.size() - floor(cutback)] + msg->knots[msg->knots.size() - ceil(cutback)]) / 2;
-    }
-
-    // Generate the B-spline and store it.
-    UniformBspline pos_traj(pos_pts, msg->order, msg->knots[1] - msg->knots[0]);
-    pos_traj.setKnot(knots);
-    planner_manager_->swarm_trajs_buf_[id].position_traj_ = pos_traj;
-
-    planner_manager_->swarm_trajs_buf_[id].start_pos_ = planner_manager_->swarm_trajs_buf_[id].position_traj_.evaluateDeBoorT(0);
-
-    planner_manager_->swarm_trajs_buf_[id].start_time_ = msg->start_time;
-
-    cout << "Starting collision check" << endl;
-    /* Check Collision */
-    if (planner_manager_->checkCollision(id))
-    {
-      changeFSMExecState(REPLAN_TRAJ, "TRAJ_CHECK");
-    }
-  }
 
   void EGOReplanFSM::swarmTrajsCallback(const std::shared_ptr<const traj_utils::msg::MultiBsplines> &msg)
   {
@@ -623,8 +527,14 @@ namespace ego_planner
       t_cur = std::min(info->duration_, t_cur);
 
       Eigen::Vector3d pos = info->position_traj_.evaluateDeBoorT(t_cur);
-      pos = odom_pos_; // use odom position directly to avoid drift
       /* && (end_pt_ - pos).norm() < 0.5 */
+      if ((pos - odom_pos_).norm() > pos_error_threshold_)
+      {
+        RCLCPP_ERROR(node_->get_logger(), "Drone is too far from the planned trajectory! pos-odom=%.2f m. Replan!", (pos - odom_pos_).norm());
+        changeFSMExecState(REPLAN_TRAJ, "TRAJ_CHECK");
+        goto force_return;
+      }
+
       if ((target_type_ == TARGET_TYPE::PRESET_TARGET) &&
           (wp_id_ < waypoint_num_ - 1) &&
           (end_pt_ - pos).norm() < no_replan_thresh_)
@@ -644,11 +554,12 @@ namespace ego_planner
             wp_id_ = 0;
             planNextWaypoint(wps_[wp_id_]);
           }
-          if ((end_pt_ - pos).norm() > no_replan_thresh_){
+          // If the local target is the same as the global target, 
+          // check actual estimated distance to the target to decide whether to plan another trajectory.
+          if ((end_pt_ - odom_pos_).norm() > no_replan_thresh_){
             have_target_ = true;
             have_trigger_ = true;
             changeFSMExecState(REPLAN_TRAJ, "FSM");
-            
           }
           else
             changeFSMExecState(WAIT_TARGET, "FSM");
@@ -734,7 +645,23 @@ namespace ego_planner
     start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
     start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
 
-    bool success = callReboundReplan(false, false);
+    bool replan_from_odom = false;
+
+    // If the tracking error is too large, use odom as start state for replanning to ensure safety.
+    if ((start_pt_ - odom_pos_).norm() > pos_error_threshold_)  // TODO tune this threshold
+    {
+      RCLCPP_WARN(
+          node_->get_logger(),
+          "Large tracking error detected when replanning: %.2f m. Use odom as start state.",
+          (start_pt_ - odom_pos_).norm());
+
+      replan_from_odom = true;
+      start_pt_ = odom_pos_;
+      start_vel_ = odom_vel_;
+      start_acc_ = Eigen::Vector3d::Zero();
+    }
+
+    bool success = callReboundReplan(replan_from_odom, false);
 
     if (!success)
     {
@@ -846,31 +773,7 @@ namespace ego_planner
   {
 
     getLocalTarget();
-     // ----------------------------
-    // 1) Compute tracking error
-    // ----------------------------
-    auto info = &planner_manager_->local_data_;
 
-    if (info->duration_ > 1e-3)  // make sure we actually have a previous traj
-    {
-      double t_cur = (node_->get_clock()->now() - info->start_time_).seconds();
-      t_cur = std::max(0.0, std::min(t_cur, info->duration_));
-
-      Eigen::Vector3d planned_pos = info->position_traj_.evaluateDeBoorT(t_cur);
-      double tracking_error = (planned_pos - odom_pos_).norm();
-
-      if (tracking_error > pos_error_threshold_)  // TODO tune this threshold
-      {
-        RCLCPP_WARN(
-            node_->get_logger(),
-            "Large tracking error detected: %.2f m. Forcing polynomial initialization.",
-            tracking_error);
-        flag_use_poly_init = true; 
-        start_pt_  = odom_pos_;         
-        start_vel_ = odom_vel_;
-        start_acc_.setZero();           
-      }
-    }
     bool plan_and_refine_success =
         planner_manager_->reboundReplan(start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_, (have_new_target_ || flag_use_poly_init), flag_randomPolyTraj);
     have_new_target_ = false;
@@ -1055,7 +958,6 @@ namespace ego_planner
 
     if ((end_pt_ - local_target_pt_).norm() < (planner_manager_->pp_.max_vel_ * planner_manager_->pp_.max_vel_) / (2 * planner_manager_->pp_.max_acc_))
     {
-      cout << "Using zero target velocity." << endl;
       local_target_vel_ = Eigen::Vector3d::Zero();
     }
     else
