@@ -157,20 +157,25 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
         std::bind(&GridMap::depthOdomCallback, this, std::placeholders::_1, std::placeholders::_2));
   }
 
+  // QOS BEST_EFFORT and volatile for point cloud
+  rclcpp::QoS qos_profile(5);
+  qos_profile
+    .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT)
+    .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
   // 使用独立的里程计和点云订阅
   indep_cloud_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "grid_map/cloud", 10, std::bind(&GridMap::cloudCallback, this, std::placeholders::_1));
+      "grid_map/cloud", qos_profile, std::bind(&GridMap::cloudCallback, this, std::placeholders::_1));
 
   indep_odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
       "grid_map/odom", 10, std::bind(&GridMap::odomCallback, this, std::placeholders::_1));
 
   // 定时器
   occ_timer_ = node_->create_timer(
-      std::chrono::duration<double>(0.5),
+      std::chrono::duration<double>(0.3),
       std::bind(&GridMap::updateOccupancyCallback, this));
 
   vis_timer_ = node_->create_timer(
-      std::chrono::duration<double>(0.11),
+      std::chrono::duration<double>(0.3),
       std::bind(&GridMap::visCallback, this));
 
 
@@ -834,6 +839,7 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &msg)
 {
 
   md_.has_cloud_ = true;
+  std::cout << "Received cloud." << std::endl;
 
   if (!md_.has_odom_) return; 
   if (!tf_buffer_) return;
@@ -849,10 +855,9 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &msg)
   geometry_msgs::msg::TransformStamped tf;
   try {
     tf = tf_buffer_->lookupTransform(
-      cloud_target_frame_,                 
+      "odom",                 
       msg->header.frame_id,                
-      msg->header.stamp,
-      rclcpp::Duration::from_seconds(0.0));
+      tf2::TimePointZero);
   } catch (const tf2::TransformException &ex) {
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
                          "Cloud TF lookup failed: %s", ex.what());
