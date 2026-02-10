@@ -6,7 +6,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # LaunchConfigurations
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    use_sim_time = LaunchConfiguration('use_sim_time', default=True)
 
     map_size_x = LaunchConfiguration('map_size_x_', default=40.0)
     map_size_y = LaunchConfiguration('map_size_y_', default=40.0)
@@ -186,6 +186,7 @@ def generate_launch_description():
             {'grid_map/pose_type': 1},
             {'grid_map/frame_id': "odom"},
             {'grid_map/point_cloud_target_frame': "odom"},
+            {'grid_map/use_sim_qos': use_sim_time},
             # planner manager
             {'manager/max_vel': max_vel},
             {'manager/max_acc': max_acc},

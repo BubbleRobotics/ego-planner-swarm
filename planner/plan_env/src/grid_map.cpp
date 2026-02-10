@@ -42,6 +42,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->declare_parameter("grid_map/local_map_margin", 1);
   node_->declare_parameter("grid_map/odom_depth_timeout", 1.0);
   node_->declare_parameter("grid_map/occ_ttl_sec", 1.0);
+  node_->declare_parameter("grid_map/use_sim_qos", true);
 
   node_->get_parameter("grid_map/resolution", mp_.resolution_);
   node_->get_parameter("grid_map/map_size_x", x_size);
@@ -76,7 +77,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   node_->get_parameter("grid_map/local_map_margin", mp_.local_map_margin_);
   node_->get_parameter("grid_map/odom_depth_timeout", mp_.odom_depth_timeout_);
   node_->get_parameter("grid_map/occ_ttl_sec", mp_.occ_ttl_sec_); 
-
+  node_->get_parameter("grid_map/use_sim_qos", mp_.use_sim_qos_); 
 
   mp_.resolution_inv_ = 1 / mp_.resolution_;
   // initialize map properties, maximum z is water surface level (0m depth)
@@ -125,7 +126,7 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
       -1.0, 0.0, 0.0, 0.0,
       0.0, -1.0, 0.0, 0.0,
       0.0, 0.0, 0.0, 1.0;
-
+  //md_.last_wiped_time_ = node_->now();
   /* init callback */
 
   // 初始化 message_filters::Subscriber
@@ -157,11 +158,16 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
         std::bind(&GridMap::depthOdomCallback, this, std::placeholders::_1, std::placeholders::_2));
   }
 
-  // QOS BEST_EFFORT and volatile for point cloud
   rclcpp::QoS qos_profile(5);
-  qos_profile
+  if (!mp_.use_sim_qos_) {
+    // QOS BEST_EFFORT and volatile for point cloud
+    qos_profile
     .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT)
     .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+  }
+  
+  indep_cloud_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "grid_map/cloud", qos_profile, std::bind(&GridMap::cloudCallback, this, std::placeholders::_1));
   // 使用独立的里程计和点云订阅
   indep_cloud_sub_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
       "grid_map/cloud", qos_profile, std::bind(&GridMap::cloudCallback, this, std::placeholders::_1));
@@ -631,6 +637,7 @@ void GridMap::clearAndInflateLocalMap()
   boundIndex(min_cut_m);
   boundIndex(max_cut_m);
 
+  
   // clear data outside the local range
   for (int x = min_cut_m(0); x <= max_cut_m(0); ++x)
     for (int y = min_cut_m(1); y <= max_cut_m(1); ++y)
@@ -839,7 +846,7 @@ void GridMap::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstPtr &msg)
 {
 
   md_.has_cloud_ = true;
-  std::cout << "Received cloud." << std::endl;
+  //std::cout << "Received cloud." << std::endl;
 
   if (!md_.has_odom_) return; 
   if (!tf_buffer_) return;

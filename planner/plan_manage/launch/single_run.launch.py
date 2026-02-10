@@ -11,7 +11,7 @@ from launch.conditions import IfCondition, UnlessCondition
 
 def generate_launch_description():
     # Definition of LaunchConfiguration parameters
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+    use_sim_time = LaunchConfiguration('use_sim_time', default=False)
     obj_num = LaunchConfiguration('obj_num', default=10)
     drone_id = LaunchConfiguration('drone_id', default=0)
     
@@ -116,7 +116,7 @@ def generate_launch_description():
             'point4_z': str(-5.0),
             'point_clicked_z_up': point_clicked_z_up_,
             'grid_map/occ_ttl_sec': map_reset_timer,
-            'obstacles_inflation': obstacle_inflation
+            'obstacles_inflation': obstacle_inflation,
             
         }.items()
     )

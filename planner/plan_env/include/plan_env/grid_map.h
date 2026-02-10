@@ -96,6 +96,7 @@ struct MappingParameters
 
   /* active mapping */
   double unknown_flag_;
+  bool use_sim_qos_;
 };
 
 // intermediate mapping data for fusion
@@ -108,7 +109,8 @@ struct MappingData
   std::vector<char> occupancy_buffer_inflate_;
   std::vector<float> occ_last_seen_; 
 
-  
+  // time of last full wipe
+  //rclcpp::Time last_wiped_time_;
 
   // camera position and pose data
 
