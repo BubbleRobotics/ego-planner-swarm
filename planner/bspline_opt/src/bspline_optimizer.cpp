@@ -464,6 +464,7 @@ namespace ego_planner
     for (int i = order_; i <= i_end; ++i)
     {
       // Check occupancy along interpolated segment between consecutive points
+      // And find segments that are inside obstacles, with stable enough entering and leaving states
       for (double a = 1.0; a > 0.0; a -= step_size)
       {
         // TODO: not fully understood

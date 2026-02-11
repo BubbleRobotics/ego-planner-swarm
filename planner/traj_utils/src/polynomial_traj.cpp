@@ -5,6 +5,19 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
                                            const Eigen::Vector3d &end_vel, const Eigen::Vector3d &start_acc,
                                            const Eigen::Vector3d &end_acc, const Eigen::VectorXd &Time)
 {
+  /*
+    Generates a piecewise 5th-order polynomial trajectory through waypoints.
+    Enforces position at all waypoints, and start/end velocity+acceleration.
+    Internal waypoint velocity/acceleration are optimized to minimize ∫ ||p'''(t)||² dt (jerk cost).
+    Inputs:
+      Pos: 3 * (m+1) matrix, each column is the start/end point of each segment, m is the number of segments.
+      start_vel, end_vel: 3D vector, the velocity at the start and end point of the whole trajectory.
+      start_acc, end_acc: 3D vector, the acceleration at the start and end point of the whole trajectory.
+      Time: m vector, time duration of each segment.
+    Output:
+      A minimum snap trajectory represented by a series of 5th order polynomials.
+  */
+
   int seg_num = Time.size();
   Eigen::MatrixXd poly_coeff(seg_num, 3 * 6);
   Eigen::VectorXd Px(6 * seg_num), Py(6 * seg_num), Pz(6 * seg_num);
@@ -19,14 +32,17 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
     return fac;
   };
 
-  /* ---------- end point derivative ---------- */
+  /* ---------- Boundary conditions D ---------- */
+  // Build raw boundary-condition vector D (per-segment endpoints).
+  // D is arranged as [p(start), p(end), p'(start), p'(end), p''(start), p''(end)] per segment.
+
   Eigen::VectorXd Dx = Eigen::VectorXd::Zero(seg_num * 6);
   Eigen::VectorXd Dy = Eigen::VectorXd::Zero(seg_num * 6);
   Eigen::VectorXd Dz = Eigen::VectorXd::Zero(seg_num * 6);
 
+
   for (int k = 0; k < seg_num; k++)
   {
-    /* position to derivative */
     Dx(k * 6) = Pos(0, k);
     Dx(k * 6 + 1) = Pos(0, k + 1);
     Dy(k * 6) = Pos(1, k);
@@ -57,6 +73,10 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
   }
 
   /* ---------- Mapping Matrix A ---------- */
+  // Per segment: D_seg = Ab * P_seg,
+  // where D_seg = [p(start), p(end), p'(start), p'(end), p''(start), p''(end)]
+  // and P_seg = [a0..a5].
+  // A is block diagonal with Ab(T_k) on the diagonal.
   Eigen::MatrixXd Ab;
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(seg_num * 6, seg_num * 6);
 
@@ -73,6 +93,10 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
   }
 
   /* ---------- Produce Selection Matrix C' ---------- */
+  // Ct encodes how the full per-segment boundary vector D is constructed from
+  // independent variables [Df; Dp], where Df are fixed constraints (waypoint positions,
+  // start/end vel/acc) and Dp are free internal vel/acc shared across adjacent segments.
+  // Thus: D = Ct * [Df; Dp], and [Df; Dp] = Ct' * D.
   Eigen::MatrixXd Ct, C;
 
   num_f = 2 * seg_num + 4; // 3 + 3 + (seg_num - 1) * 2 = 2m + 4
@@ -110,6 +134,8 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
   Eigen::VectorXd Dz1 = C * Dz;
 
   /* ---------- minimum snap matrix ---------- */
+  // Q is the coefficient-space cost matrix for ∫ ||p'''(t)||² dt (jerk energy) per axis.
+ 
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(seg_num * 6, seg_num * 6);
 
   for (int k = 0; k < seg_num; k++)
@@ -125,6 +151,8 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
   }
 
   /* ---------- R matrix ---------- */
+  // Convert cost into the [Df; Dp] space: J = [Df; Dp]' R [Df; Dp]
+
   Eigen::MatrixXd R = C * A.transpose().inverse() * Q * A.inverse() * Ct;
 
   Eigen::VectorXd Dxf(2 * seg_num + 4), Dyf(2 * seg_num + 4), Dzf(2 * seg_num + 4);
@@ -144,6 +172,8 @@ PolynomialTraj PolynomialTraj::minSnapTraj(const Eigen::MatrixXd &Pos, const Eig
   Rpp = R.block(2 * seg_num + 4, 2 * seg_num + 4, 2 * seg_num - 2, 2 * seg_num - 2);
 
   /* ---------- close form solution ---------- */
+  // Optimal free variables from ∂J/∂Dp = 0:
+  // Dp* = -Rpp⁻¹ Rpf Df 
 
   Eigen::VectorXd Dxp(2 * seg_num - 2), Dyp(2 * seg_num - 2), Dzp(2 * seg_num - 2);
   Dxp = -(Rpp.inverse() * Rfp.transpose()) * Dxf;
@@ -188,6 +218,18 @@ PolynomialTraj PolynomialTraj::one_segment_traj_gen(const Eigen::Vector3d &start
                                                     const Eigen::Vector3d &end_pt, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc,
                                                     double t)
 {
+  /*
+    Generates a 5th-order polynomial trajectory for one segment.
+    Enforces position, velocity and acceleration at the start and end point.
+    No free variable, thus no optimization is needed.
+    Inputs:
+      start_pt, end_pt: 3D vector, the start and end point of the segment.
+      start_vel, end_vel: 3D vector, the velocity at the start and end point of the segment.
+      start_acc, end_acc: 3D vector, the acceleration at the start and end point of the segment.
+      t: double, time duration of the segment.
+    Output:
+      A 5th order polynomial trajectory for the segment.
+  */
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(6, 6), Crow(1, 6);
   Eigen::VectorXd Bx(6), By(6), Bz(6);
 

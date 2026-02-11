@@ -35,9 +35,23 @@ void AStar::initGridMap(GridMap::Ptr occ_map, const Eigen::Vector3i pool_size)
 
 double AStar::getDiagHeu(GridNodePtr node1, GridNodePtr node2)
 {
-    double dx = abs(node1->index(0) - node2->index(0));
-    double dy = abs(node1->index(1) - node2->index(1));
-    double dz = abs(node1->index(2) - node2->index(2));
+    /*
+    3D diagonal (26-connected) distance heuristic in grid-index space.
+
+    Weights:
+        - axis-aligned moves with cost 1,
+        - face-diagonal moves with cost sqrt(2),
+        - space-diagonal moves with cost sqrt(3).
+
+    Computes the heuristic by:
+        1) taking as many 3D diagonal steps as possible,
+        2) then 2D diagonal steps in the remaining plane,
+        3) then axis-aligned steps.
+    */
+
+    int dx = abs(node1->index(0) - node2->index(0));
+    int dy = abs(node1->index(1) - node2->index(1));
+    int dz = abs(node1->index(2) - node2->index(2));
 
     double h = 0.0;
     int diag = min(min(dx, dy), dz);
@@ -49,11 +63,11 @@ double AStar::getDiagHeu(GridNodePtr node1, GridNodePtr node2)
     {
         h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dy, dz) + 1.0 * abs(dy - dz);
     }
-    if (dy == 0)
+    else if (dy == 0)
     {
         h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dx, dz) + 1.0 * abs(dx - dz);
     }
-    if (dz == 0)
+    else if (dz == 0)
     {
         h = 1.0 * sqrt(3.0) * diag + sqrt(2.0) * min(dx, dy) + 1.0 * abs(dx - dy);
     }
@@ -62,6 +76,11 @@ double AStar::getDiagHeu(GridNodePtr node1, GridNodePtr node2)
 
 double AStar::getManhHeu(GridNodePtr node1, GridNodePtr node2)
 {
+    /*
+    Manhattan (L1) distance heuristic. Assumes unit cost for axis moves and ignores diagonals.
+
+    The heuristic is computed by taking only axis-aligned steps. 
+    */
     double dx = abs(node1->index(0) - node2->index(0));
     double dy = abs(node1->index(1) - node2->index(1));
     double dz = abs(node1->index(2) - node2->index(2));
@@ -71,6 +90,11 @@ double AStar::getManhHeu(GridNodePtr node1, GridNodePtr node2)
 
 double AStar::getEuclHeu(GridNodePtr node1, GridNodePtr node2)
 {
+    /*
+    Euclidian (L2) distance heuristic. Assumes unit cost for axis moves.
+
+    The heuristic is computed by treating the grid as a continuous 3D space and calculating the straight-line distance between the two nodes.
+    */
     return (node2->index - node1->index).norm();
 }
 
@@ -120,6 +144,33 @@ bool AStar::ConvertToIndexAndAdjustStartEndPoints(Vector3d start_pt, Vector3d en
 
 bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_pt)
 {
+    /*
+    Perform A* search on a 3D voxel grid to find a collision-free path
+    between a start point and a goal point.
+
+    The search is performed in grid-index space using a 26-connected
+    neighborhood (axis-aligned, face-diagonal, and space-diagonal moves).
+    Edge costs correspond to the Euclidean length of each grid move, and
+    the heuristic is provided by getHeu().
+
+    The algorithm terminates when the goal grid cell is selected for
+    expansion, at which point the optimal path is reconstructed by
+    following parent pointers. A strict time limit is enforced to ensure
+    real-time performance.
+
+    Inputs:
+        - step_size:
+            Resolution of the voxel grid (size of each grid cell).
+        - start_pt:
+            Start position in world coordinates.
+        - end_pt:
+            Goal position in world coordinates.
+
+    Returns:
+        - true  if a collision-free path to the goal is found within the time limit.
+        - false if no path is found or the search exceeds the time budget.
+    */
+
     rclcpp::Time time_1 = rclcpp::Clock().now();
     ++rounds_;
 
@@ -162,27 +213,25 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
     while (!openSet_.empty())
     {
         num_iter++;
+
+        // Select node with lowest fScore from open set
         current = openSet_.top();
         openSet_.pop();
 
-        // if ( num_iter < 10000 )
-        //     cout << "current=" << current->index.transpose() << endl;
-
+        // Goal reached: reconstruct path.
         if (current->index(0) == endPtr->index(0) && current->index(1) == endPtr->index(1) && current->index(2) == endPtr->index(2))
         {
-            // ros::Time time_2 = ros::Time::now();
-            // printf("\033[34mA star iter:%d, time:%.3f\033[0m\n",num_iter, (time_2 - time_1).toSec()*1000);
-            // if((time_2 - time_1).toSec() > 0.1)
-            //     ROS_WARN("Time consume in A star path finding is %f", (time_2 - time_1).toSec() );
             gridPath_ = retrievePath(current);
             return true;
         }
         current->state = GridNode::CLOSEDSET; //move current node from open set to closed set.
 
+        // Explore 26-connected neighborhood
         for (int dx = -1; dx <= 1; dx++)
             for (int dy = -1; dy <= 1; dy++)
                 for (int dz = -1; dz <= 1; dz++)
                 {
+                    // Skip the current node itself
                     if (dx == 0 && dy == 0 && dz == 0)
                         continue;
 
@@ -190,8 +239,11 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                     neighborIdx(0) = (current->index)(0) + dx;
                     neighborIdx(1) = (current->index)(1) + dy;
                     neighborIdx(2) = (current->index)(2) + dz;
-
-                    if (neighborIdx(0) < 1 || neighborIdx(0) >= POOL_SIZE_(0) - 1 || neighborIdx(1) < 1 || neighborIdx(1) >= POOL_SIZE_(1) - 1 || neighborIdx(2) < 1 || neighborIdx(2) >= POOL_SIZE_(2) - 1)
+                    
+                    // Bounds check (avoid accessing invalid grid cells)
+                    if (neighborIdx(0) < 1 || neighborIdx(0) >= POOL_SIZE_(0) - 1 || 
+                        neighborIdx(1) < 1 || neighborIdx(1) >= POOL_SIZE_(1) - 1 || 
+                        neighborIdx(2) < 1 || neighborIdx(2) >= POOL_SIZE_(2) - 1)
                     {
                         continue;
                     }
@@ -199,6 +251,7 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                     neighborPtr = GridNodeMap_[neighborIdx(0)][neighborIdx(1)][neighborIdx(2)];
                     neighborPtr->index = neighborIdx;
 
+                    // Check whether this node has already been explored in this round
                     bool flag_explored = neighborPtr->rounds == rounds_;
 
                     if (flag_explored && neighborPtr->state == GridNode::CLOSEDSET)
@@ -212,7 +265,8 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                     {
                         continue;
                     }
-
+                    
+                    // Cost of moving from current to neighbor
                     double static_cost = sqrt(dx * dx + dy * dy + dz * dz);
                     tentative_gScore = current->gScore + static_cost;
 
@@ -226,25 +280,34 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                         openSet_.push(neighborPtr); //put neighbor in open set and record it.
                     }
                     else if (tentative_gScore < neighborPtr->gScore)
-                    { //in open set and need update
+                    { 
+                        // Found a better path to an already discovered node
                         neighborPtr->cameFrom = current;
                         neighborPtr->gScore = tentative_gScore;
                         neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
                     }
                 }
+
+        // Enforce a strict time limit to maintain real-time performance
         rclcpp::Time time_2 = rclcpp::Clock().now();
         if ((time_2 - time_1).seconds() > 0.2)
         {
-            RCLCPP_WARN(rclcpp::get_logger("AstarSearch"), "Failed in A star path searching !!! 0.2 seconds time limit exceeded.");
+            RCLCPP_WARN(rclcpp::get_logger("AstarSearch"),
+                        "A* search failed: 0.2s time limit exceeded.");
             return false;
         }
     }
 
+    // Search exhausted without reaching the goal
     rclcpp::Time time_2 = rclcpp::Clock().now();
 
-    if ((time_2 - time_1).seconds() > 0.1)
-        RCLCPP_WARN(rclcpp::get_logger("AstarSearch"), 
-                    "Time consume in A star path finding is %.3fs, iter=%d", (time_2 - time_1).seconds(), num_iter);
+    if ((time_2 - time_1).seconds() > 0.1){
+        RCLCPP_WARN(
+            rclcpp::get_logger("AstarSearch"),
+            "A* search terminated: no feasible path found "
+            "(time=%.3fs, iterations=%d)",
+            (time_2 - time_1).seconds(), num_iter);
+        }
 
     return false;
 }

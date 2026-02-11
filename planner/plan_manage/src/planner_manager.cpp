@@ -77,6 +77,7 @@ namespace ego_planner
                                         Eigen::Vector3d start_acc, Eigen::Vector3d local_target_pt,
                                         Eigen::Vector3d local_target_vel, bool flag_polyInit, bool flag_randomPolyTraj)
   {
+
     static int count = 0;
     printf("\033[47;30m\n[drone %d replan %d]==============================================\033[0m\n", pp_.drone_id, count++);
 
@@ -139,11 +140,16 @@ namespace ego_planner
         }
         else
         {
+          Eigen::Vector3d mid_point = 0.5 * (start_pt + local_target_pt);
           Eigen::Vector3d horizen_dir = ((start_pt - local_target_pt).cross(Eigen::Vector3d(0, 0, 1))).normalized();
           Eigen::Vector3d vertical_dir = ((start_pt - local_target_pt).cross(horizen_dir)).normalized();
+          Eigen::Vector3d random_inserted_pt = mid;
+          // only start to add randomness when the straight line connection fails, randomness should help escape from local minima
+          if (continous_failures_count_ > 0){
           Eigen::Vector3d random_inserted_pt = (start_pt + local_target_pt) / 2 +
                                                (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * horizen_dir * 0.8 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989) +
                                                (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * vertical_dir * 0.4 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989);
+          }
           Eigen::MatrixXd pos(3, 3);
           pos.col(0) = start_pt;
           pos.col(1) = random_inserted_pt;
@@ -153,6 +159,7 @@ namespace ego_planner
           gl_traj = PolynomialTraj::minSnapTraj(pos, start_vel, local_target_vel, start_acc, Eigen::Vector3d::Zero(), t);
         }
 
+        // Given the initial trajectory, sample points along it that will be used as control points for the B-spline optimization.
         double t;
         bool flag_too_far;
         ts *= 1.5; // ts will be divided by 1.5 in the next
@@ -165,7 +172,7 @@ namespace ego_planner
           for (t = 0; t < time; t += ts)
           {
             Eigen::Vector3d pt = gl_traj.evaluate(t);
-            if ((last_pt - pt).norm() > pp_.ctrl_pt_dist * 1.5)
+            if ((last_pt - pt).norm() > pp_.ctrl_pt_dist * 1.5) // If distance between consecutive points is too large, trajectory is too agressive, regenerate with smaller sampling time step.
             {
               flag_too_far = true;
               break;
@@ -175,6 +182,7 @@ namespace ego_planner
           }
           
         } while (flag_too_far || point_set.size() < 7); // To make sure the initial path has enough points.
+
         // Enure that last point is close enough to the target point 
         if ((point_set.back() - local_target_pt).norm() > 1e-4)
         {
@@ -182,9 +190,9 @@ namespace ego_planner
         }
 
         // Use the true end time for derivatives
-        start_end_derivatives.push_back(gl_traj.evaluateVel(0));
+        start_end_derivatives.push_back(start_vel);
         start_end_derivatives.push_back(local_target_vel);
-        start_end_derivatives.push_back(gl_traj.evaluateAcc(0));
+        start_end_derivatives.push_back(start_acc);
         start_end_derivatives.push_back(gl_traj.evaluateAcc(time));
       }
       else // Initial path generated from previous trajectory.
@@ -294,7 +302,7 @@ namespace ego_planner
           }
           else
           {
-            // If straight-line plan succeeded, the trajectory has already been updated and visualized in tryStraightLinePlan, so we can return early.
+            // If straight-line plan succeeded, the trajectory has already been updated and visualized in tryStraightLinePlan, return early.
             return true;
           }
         }

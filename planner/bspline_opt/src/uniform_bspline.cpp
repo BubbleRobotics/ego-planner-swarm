@@ -212,6 +212,29 @@ namespace ego_planner
                                              const vector<Eigen::Vector3d> &start_end_derivative,
                                              Eigen::MatrixXd &ctrl_pts)
   {
+    /*
+      Parameterize a sequence of points as a uniform cubic B-spline.
+
+      Given a set of points and boundary derivatives, this function computes
+      the control points of a uniform cubic B-spline that interpolates the points
+      and satisfies the specified start/end velocity and acceleration.
+
+      Inputs:
+        - ts:
+            Uniform knot (time) spacing of the B-spline.
+        - point_set:
+            Positions that the B-spline curve must interpolate.
+        - start_end_derivative:
+            Boundary derivative constraints, in order:
+              [0] start velocity
+              [1] end velocity
+              [2] start acceleration
+              [3] end acceleration
+
+      Returns:
+        - ctrl_pts:
+            3 x (K+2) matrix of B-spline control points. (K: number of input points)
+    */
     if (ts <= 0)
     {
       cout << "[B-spline]:time step error." << endl;
