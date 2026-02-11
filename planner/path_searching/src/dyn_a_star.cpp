@@ -191,7 +191,7 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
     GridNodePtr startPtr = GridNodeMap_[start_idx(0)][start_idx(1)][start_idx(2)];
     GridNodePtr endPtr = GridNodeMap_[end_idx(0)][end_idx(1)][end_idx(2)];
 
-    std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> empty;
+    std::priority_queue<OpenItem, std::vector<OpenItem>, OpenItemComparator> empty;
     openSet_.swap(empty);
 
     GridNodePtr neighborPtr = NULL;
@@ -203,7 +203,7 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
     startPtr->fScore = getHeu(startPtr, endPtr);
     startPtr->state = GridNode::OPENSET; //put start node in open set
     startPtr->cameFrom = NULL;
-    openSet_.push(startPtr); //put start in open set
+    openSet_.push({startPtr->fScore, startPtr}); //put start in open set
 
     endPtr->index = end_idx;
 
@@ -215,8 +215,27 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
         num_iter++;
 
         // Select node with lowest fScore from open set
-        current = openSet_.top();
-        openSet_.pop();
+        GridNodePtr current = nullptr;
+
+        while (!openSet_.empty()) {
+            auto [f_at_push, node] = openSet_.top();
+            openSet_.pop();
+
+            // Skip entries from previous rounds (extra safety)
+            if (node->rounds != rounds_) continue;
+
+            // Skip nodes already closed
+            if (node->state == GridNode::CLOSEDSET) continue;
+
+            // Skip stale priority entries (node fscore was improved or worsened after this entry was pushed)
+            if (std::abs(f_at_push - node->fScore) > 1e-12) continue;
+
+            current = node;
+            break;
+        }
+
+        if (!current) break; // nothing usable left
+
 
         // Goal reached: reconstruct path.
         if (current->index(0) == endPtr->index(0) && current->index(1) == endPtr->index(1) && current->index(2) == endPtr->index(2))
@@ -248,6 +267,12 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                         continue;
                     }
 
+                    // Frist, check if neighbor voxel is free (continue directly if occupied)
+                    if (checkOccupancy(Index2Coord(neighborIdx)))
+                    {
+                        continue;
+                    }
+
                     neighborPtr = GridNodeMap_[neighborIdx(0)][neighborIdx(1)][neighborIdx(2)];
                     neighborPtr->index = neighborIdx;
 
@@ -261,11 +286,6 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
 
                     neighborPtr->rounds = rounds_;
 
-                    if (checkOccupancy(Index2Coord(neighborPtr->index)))
-                    {
-                        continue;
-                    }
-                    
                     // Cost of moving from current to neighbor
                     double static_cost = sqrt(dx * dx + dy * dy + dz * dz);
                     tentative_gScore = current->gScore + static_cost;
@@ -277,7 +297,7 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                         neighborPtr->cameFrom = current;
                         neighborPtr->gScore = tentative_gScore;
                         neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
-                        openSet_.push(neighborPtr); //put neighbor in open set and record it.
+                        openSet_.push({neighborPtr->fScore, neighborPtr});  //put neighbor in open set and record it.
                     }
                     else if (tentative_gScore < neighborPtr->gScore)
                     { 
@@ -285,6 +305,9 @@ bool AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_
                         neighborPtr->cameFrom = current;
                         neighborPtr->gScore = tentative_gScore;
                         neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
+                        // Re-push to "update" priority in std::priority_queue
+                        // Otherwise queue in openSet_ is wrong, since it does not automatically update the prio
+                        openSet_.push({neighborPtr->fScore, neighborPtr});
                     }
                 }
 
