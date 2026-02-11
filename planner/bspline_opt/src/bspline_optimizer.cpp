@@ -647,6 +647,11 @@ namespace ego_planner
             --Astar_id;
           else
             ++Astar_id;
+          if (Astar_id < 0 || Astar_id >= (int)a_star_pathes[i].size())
+          {
+            // Do not try to index at -1 or size() (out of bounds)
+            break;
+          }
 
           val = (a_star_pathes[i][Astar_id] - init_points.col(j)).dot(ctrl_pts_law);
 
@@ -713,6 +718,12 @@ namespace ego_planner
             --Astar_id;
           else
             ++Astar_id;
+          
+          if (Astar_id < 0 || Astar_id >= (int)a_star_pathes[i].size())
+          {
+            // Do not try to index at -1 or size() (out of bounds)
+            break;
+          }
 
           // Here subtract middle_point instead of control point
           val = (a_star_pathes[i][Astar_id] - middle_point).dot(ctrl_pts_law);
@@ -1359,7 +1370,11 @@ namespace ego_planner
               --Astar_id;
             else
               ++Astar_id;
-
+            if (Astar_id < 0 || Astar_id >= (int)a_star_pathes[i].size())
+            {
+              // Do not try to index at -1 or size() (out of bounds)
+              break;
+            }
             val = (a_star_pathes[i][Astar_id] - cps_.points.col(j)).dot(ctrl_pts_law);
 
             if (val * last_val <= 0 && (abs(val) > 0 || abs(last_val) > 0)) // val = last_val = 0.0 is not allowed
