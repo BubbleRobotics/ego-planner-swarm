@@ -400,9 +400,9 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, doub
         yawdot = (yaw_temp - last_yaw_) / dt;
     }
   }
-  if (yawdot > 1 || yawdot < -1){
+  /*if (yawdot > 1 || yawdot < -1){
     cout << "YAWDOT" << yawdot << " DT" << dt << " YAWTEMP" << yaw_temp << " LASTYAW" << last_yaw_ << endl;
-  }
+  }*/
   if (fabs(yaw - last_yaw_) <= max_yaw_change)
     yaw = 0.5 * last_yaw_ + 0.5 * yaw; // nieve LPF
   yawdot = 0.5 * last_yaw_dot_ + 0.5 * yawdot;
