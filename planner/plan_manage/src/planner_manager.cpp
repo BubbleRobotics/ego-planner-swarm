@@ -143,7 +143,7 @@ namespace ego_planner
           Eigen::Vector3d mid_point = 0.5 * (start_pt + local_target_pt);
           Eigen::Vector3d horizen_dir = ((start_pt - local_target_pt).cross(Eigen::Vector3d(0, 0, 1))).normalized();
           Eigen::Vector3d vertical_dir = ((start_pt - local_target_pt).cross(horizen_dir)).normalized();
-          Eigen::Vector3d random_inserted_pt = mid;
+          Eigen::Vector3d random_inserted_pt = mid_point;
           // only start to add randomness when the straight line connection fails, randomness should help escape from local minima
           if (continous_failures_count_ > 0){
           Eigen::Vector3d random_inserted_pt = (start_pt + local_target_pt) / 2 +
