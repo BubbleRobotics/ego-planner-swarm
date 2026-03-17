@@ -3,6 +3,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # LaunchConfigurations
@@ -25,6 +26,17 @@ def generate_launch_description():
     max_vel = LaunchConfiguration('max_vel', default=0.25)
     max_acc = LaunchConfiguration('max_acc', default=0.25)
     planning_horizon = LaunchConfiguration('planning_horizon', default=7.5)
+    params_file = LaunchConfiguration(
+        'params_file',
+        default=os.path.join(get_package_share_directory('ego_planner'), 'config', 'distance_control.yaml')
+    )
+    distance_mode = LaunchConfiguration('distance_mode', default='none')
+    distance_topic = LaunchConfiguration('distance_topic', default='/distance')
+    distance_target_cm = LaunchConfiguration('distance_target_cm', default=10.0)
+    distance_deadband_cm = LaunchConfiguration('distance_deadband_cm', default=0.5)
+    distance_kp = LaunchConfiguration('distance_kp', default=1.0)
+    distance_max_corr_m = LaunchConfiguration('distance_max_corr_m', default=0.10)
+    distance_timeout_s = LaunchConfiguration('distance_timeout_s', default=0.5)
     
     point_num = LaunchConfiguration('point_num', default=1)
     point0_x = LaunchConfiguration('point0_x', default=0.0)
@@ -71,6 +83,14 @@ def generate_launch_description():
     max_vel_arg = DeclareLaunchArgument('max_vel', default_value=max_vel, description='Maximum velocity')
     max_acc_arg = DeclareLaunchArgument('max_acc', default_value=max_acc, description='Maximum acceleration')
     planning_horizon_arg = DeclareLaunchArgument('planning_horizon', default_value=planning_horizon, description='Planning horizon')
+    params_file_arg = DeclareLaunchArgument('params_file', default_value=params_file, description='YAML file with planner parameter defaults')
+    distance_mode_arg = DeclareLaunchArgument('distance_mode', default_value=distance_mode, description='Distance control mode: none, front, or down')
+    distance_topic_arg = DeclareLaunchArgument('distance_topic', default_value=distance_topic, description='Distance sensor topic in centimeters')
+    distance_target_cm_arg = DeclareLaunchArgument('distance_target_cm', default_value=distance_target_cm, description='Target distance in centimeters')
+    distance_deadband_cm_arg = DeclareLaunchArgument('distance_deadband_cm', default_value=distance_deadband_cm, description='Deadband for the distance error in centimeters')
+    distance_kp_arg = DeclareLaunchArgument('distance_kp', default_value=distance_kp, description='Proportional gain applied to the distance error')
+    distance_max_corr_m_arg = DeclareLaunchArgument('distance_max_corr_m', default_value=distance_max_corr_m, description='Maximum local target correction per replan in meters')
+    distance_timeout_s_arg = DeclareLaunchArgument('distance_timeout_s', default_value=distance_timeout_s, description='Maximum age of a distance sample before it is ignored')
     
     point_num_arg = DeclareLaunchArgument('point_num', default_value=point_num, description='Number of waypoints')
     point0_x_arg = DeclareLaunchArgument('point0_x', default_value=point0_x, description='Waypoint 0 X coordinate')
@@ -122,6 +142,7 @@ def generate_launch_description():
             ('grid_map/occupancy_inflate', ['ego_grid/grid_map/occupancy_inflate'])
         ],
         parameters=[
+            params_file,
             {'use_sim_time': use_sim_time},
             {'fsm/flight_type': flight_type},
             {'fsm/thresh_replan_time': 1.0},
@@ -149,6 +170,13 @@ def generate_launch_description():
             {'fsm/waypoint4_y': point4_y},
             {'fsm/waypoint4_z': point4_z},
             {'fsm/point_clicked_z_up': point_clicked_z_up_},
+            {'fsm/distance_mode': distance_mode},
+            {'fsm/distance_topic': distance_topic},
+            {'fsm/distance_target_cm': distance_target_cm},
+            {'fsm/distance_deadband_cm': distance_deadband_cm},
+            {'fsm/distance_kp': distance_kp},
+            {'fsm/distance_max_corr_m': distance_max_corr_m},
+            {'fsm/distance_timeout_s': distance_timeout_s},
             
             {'grid_map/resolution': 0.1},
             {'grid_map/map_size_x': map_size_x},
@@ -238,6 +266,14 @@ def generate_launch_description():
     ld.add_action(max_vel_arg)
     ld.add_action(max_acc_arg)
     ld.add_action(planning_horizon_arg)
+    ld.add_action(params_file_arg)
+    ld.add_action(distance_mode_arg)
+    ld.add_action(distance_topic_arg)
+    ld.add_action(distance_target_cm_arg)
+    ld.add_action(distance_deadband_cm_arg)
+    ld.add_action(distance_kp_arg)
+    ld.add_action(distance_max_corr_m_arg)
+    ld.add_action(distance_timeout_s_arg)
     
     ld.add_action(point_num_arg)
     ld.add_action(point0_x_arg)

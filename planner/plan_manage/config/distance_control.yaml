@@ -1,0 +1,10 @@
+ego_planner_node:
+  ros__parameters:
+    fsm:
+      distance_mode: "down"
+      distance_topic: "/min_distance"
+      distance_target_cm: 100.0
+      distance_deadband_cm: 5.0
+      distance_kp: 1.0
+      distance_max_corr_m: 0.50
+      distance_timeout_s: 0.5

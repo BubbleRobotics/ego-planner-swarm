@@ -9,7 +9,9 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "std_msgs/msg/float32.hpp"
 #include <vector>
+#include <string>
 #include "visualization_msgs/msg/marker.hpp"
 
 #include "bspline_opt/bspline_optimizer.h"
@@ -50,6 +52,12 @@ namespace ego_planner
       PRESET_TARGET = 2,
       REFENCE_PATH = 3
     };
+    enum DISTANCE_CONTROL_MODE
+    {
+      DISTANCE_MODE_NONE = 0,
+      DISTANCE_MODE_FRONT = 1,
+      DISTANCE_MODE_DOWN = 2
+    };
 
     /* planning utils */
     EGOPlannerManager::Ptr planner_manager_;
@@ -67,9 +75,18 @@ namespace ego_planner
     bool flag_realworld_experiment_;
     bool enable_fail_safe_;
     float pos_error_threshold_;
+    DISTANCE_CONTROL_MODE distance_mode_{DISTANCE_MODE_NONE};
+    std::string distance_mode_str_{"none"};
+    std::string distance_topic_{"/distance"};
+    double distance_target_cm_{10.0};
+    double distance_deadband_cm_{0.5};
+    double distance_kp_{1.0};
+    double distance_max_corr_m_{0.10};
+    double distance_timeout_s_{0.5};
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
+    bool have_distance_measurement_{false};
     FSM_EXEC_STATE exec_state_;
     int continously_called_times_{0};
 
@@ -82,6 +99,8 @@ namespace ego_planner
     Eigen::Vector3d local_target_pt_, local_target_vel_;                     // local target state
     std::vector<Eigen::Vector3d> wps_;
     int current_wp_;
+    float last_distance_cm_{0.0F};
+    rclcpp::Time last_distance_stamp_;
 
     bool flag_escape_emergency_;
 
@@ -91,6 +110,7 @@ namespace ego_planner
 
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr distance_sub_;
     rclcpp::Subscription<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_sub_;
     rclcpp::Subscription<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_sub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr trigger_sub_;
@@ -119,6 +139,9 @@ namespace ego_planner
     void readGivenWps();
     void planNextWaypoint(const Eigen::Vector3d next_wp);
     void getLocalTarget();
+    void loadDistanceControlParams();
+    void applyDistanceConstraintToLocalTarget();
+    bool distanceMeasurementFresh() const;
 
     /* ROS functions */
     void velAccCmdCallback(const std::shared_ptr<traj_utils::srv::VelAccCmd::Request> request,
@@ -130,6 +153,7 @@ namespace ego_planner
     void waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);
     void triggerCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);
     void odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg);
+    void distanceCallback(const std::shared_ptr<const std_msgs::msg::Float32> &msg);
     void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg);
     void swarmTrajsCallback(const std::shared_ptr<const traj_utils::msg::MultiBsplines> &msg);
 

@@ -22,6 +22,17 @@ def generate_launch_description():
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     map_reset_timer = LaunchConfiguration('map_reset_timer', default='5.0')
     obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.05')
+    params_file = LaunchConfiguration(
+        'params_file',
+        default=os.path.join(get_package_share_directory('ego_planner'), 'config', 'distance_control.yaml')
+    )
+    distance_mode = LaunchConfiguration('distance_mode', default='none')
+    distance_topic = LaunchConfiguration('distance_topic', default='/distance')
+    distance_target_cm = LaunchConfiguration('distance_target_cm', default='10.0')
+    distance_deadband_cm = LaunchConfiguration('distance_deadband_cm', default='0.5')
+    distance_kp = LaunchConfiguration('distance_kp', default='1.0')
+    distance_max_corr_m = LaunchConfiguration('distance_max_corr_m', default='0.10')
+    distance_timeout_s = LaunchConfiguration('distance_timeout_s', default='0.5')
     # Declare global parameters
     use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
@@ -32,6 +43,14 @@ def generate_launch_description():
     map_size_z_cmd = DeclareLaunchArgument('map_size_z', default_value=map_size_z, description='Map size along z')
     odom_topic_cmd = DeclareLaunchArgument('odom_topic', default_value=odom_topic, description='Odometry topic')
     point_clicked_z_up_cmd = DeclareLaunchArgument('point_clicked_z_up', default_value=point_clicked_z_up_, description='Default z-value (up) for rviz clicked points (new goal of planner)')
+    params_file_cmd = DeclareLaunchArgument('params_file', default_value=params_file, description='YAML file with planner parameter defaults')
+    distance_mode_cmd = DeclareLaunchArgument('distance_mode', default_value=distance_mode, description='Distance control mode: none, front, or down')
+    distance_topic_cmd = DeclareLaunchArgument('distance_topic', default_value=distance_topic, description='Distance sensor topic in centimeters')
+    distance_target_cm_cmd = DeclareLaunchArgument('distance_target_cm', default_value=distance_target_cm, description='Target distance in centimeters')
+    distance_deadband_cm_cmd = DeclareLaunchArgument('distance_deadband_cm', default_value=distance_deadband_cm, description='Deadband for the distance error in centimeters')
+    distance_kp_cmd = DeclareLaunchArgument('distance_kp', default_value=distance_kp, description='Proportional gain applied to the distance error')
+    distance_max_corr_m_cmd = DeclareLaunchArgument('distance_max_corr_m', default_value=distance_max_corr_m, description='Maximum local target correction per replan in meters')
+    distance_timeout_s_cmd = DeclareLaunchArgument('distance_timeout_s', default_value=distance_timeout_s, description='Maximum age of a distance sample before it is ignored')
     # Map properties and whether to use dynamic simulation
     use_mockamap = LaunchConfiguration('use_mockamap', default=False) # map_generator or mockamap 
     
@@ -117,6 +136,14 @@ def generate_launch_description():
             'point_clicked_z_up': point_clicked_z_up_,
             'grid_map/occ_ttl_sec': map_reset_timer,
             'obstacles_inflation': obstacle_inflation,
+            'params_file': params_file,
+            'distance_mode': distance_mode,
+            'distance_topic': distance_topic,
+            'distance_target_cm': distance_target_cm,
+            'distance_deadband_cm': distance_deadband_cm,
+            'distance_kp': distance_kp,
+            'distance_max_corr_m': distance_max_corr_m,
+            'distance_timeout_s': distance_timeout_s,
             
         }.items()
     )
@@ -181,6 +208,14 @@ def generate_launch_description():
     ld.add_action(odom_topic_cmd)
     ld.add_action(obj_num_cmd)
     ld.add_action(drone_id_cmd)
+    ld.add_action(params_file_cmd)
+    ld.add_action(distance_mode_cmd)
+    ld.add_action(distance_topic_cmd)
+    ld.add_action(distance_target_cm_cmd)
+    ld.add_action(distance_deadband_cm_cmd)
+    ld.add_action(distance_kp_cmd)
+    ld.add_action(distance_max_corr_m_cmd)
+    ld.add_action(distance_timeout_s_cmd)
     ld.add_action(use_dynamic_cmd)
     ld.add_action(use_mockamap_cmd)
     ld.add_action(map_reset_timer_cmd)

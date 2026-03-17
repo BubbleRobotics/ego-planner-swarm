@@ -2,9 +2,135 @@
 #include <ego_planner/ego_replan_fsm.h>
 #include <traj_utils/srv/vel_acc_cmd.hpp>
 #include <traj_utils/srv/set_error_threshold.hpp>
+#include <cctype>
+#include <cmath>
 
 namespace ego_planner
 {
+
+  namespace
+  {
+    std::string normalizeModeString(std::string value)
+    {
+      std::transform(
+          value.begin(),
+          value.end(),
+          value.begin(),
+          [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return value;
+    }
+  } // namespace
+
+  void EGOReplanFSM::loadDistanceControlParams()
+  {
+    node_->declare_parameter("fsm/distance_mode", std::string("none"));
+    node_->declare_parameter("fsm/distance_topic", std::string("/distance"));
+    node_->declare_parameter("fsm/distance_target_cm", 10.0);
+    node_->declare_parameter("fsm/distance_deadband_cm", 0.5);
+    node_->declare_parameter("fsm/distance_kp", 1.0);
+    node_->declare_parameter("fsm/distance_max_corr_m", 0.10);
+    node_->declare_parameter("fsm/distance_timeout_s", 0.5);
+
+    node_->get_parameter("fsm/distance_mode", distance_mode_str_);
+    node_->get_parameter("fsm/distance_topic", distance_topic_);
+    node_->get_parameter("fsm/distance_target_cm", distance_target_cm_);
+    node_->get_parameter("fsm/distance_deadband_cm", distance_deadband_cm_);
+    node_->get_parameter("fsm/distance_kp", distance_kp_);
+    node_->get_parameter("fsm/distance_max_corr_m", distance_max_corr_m_);
+    node_->get_parameter("fsm/distance_timeout_s", distance_timeout_s_);
+
+    distance_mode_str_ = normalizeModeString(distance_mode_str_);
+    if (distance_mode_str_ == "none")
+    {
+      distance_mode_ = DISTANCE_MODE_NONE;
+    }
+    else if (distance_mode_str_ == "front")
+    {
+      distance_mode_ = DISTANCE_MODE_FRONT;
+    }
+    else if (distance_mode_str_ == "down")
+    {
+      distance_mode_ = DISTANCE_MODE_DOWN;
+    }
+    else
+    {
+      RCLCPP_WARN(
+          node_->get_logger(),
+          "Unknown distance_mode '%s'. Falling back to 'none'.",
+          distance_mode_str_.c_str());
+      distance_mode_str_ = "none";
+      distance_mode_ = DISTANCE_MODE_NONE;
+    }
+  }
+
+  bool EGOReplanFSM::distanceMeasurementFresh() const
+  {
+    if (!have_distance_measurement_)
+    {
+      return false;
+    }
+
+    const auto age = node_->get_clock()->now() - last_distance_stamp_;
+    return age.seconds() <= distance_timeout_s_;
+  }
+
+  void EGOReplanFSM::applyDistanceConstraintToLocalTarget()
+  {
+    if (distance_mode_ == DISTANCE_MODE_NONE)
+    {
+      return;
+    }
+
+    if (!distanceMeasurementFresh())
+    {
+      RCLCPP_WARN_THROTTLE(
+          node_->get_logger(),
+          *node_->get_clock(),
+          2000,
+          "Distance control is enabled but %s is missing or stale. Using nominal local target.",
+          distance_topic_.c_str());
+      return;
+    }
+
+    const double target_distance_m = 0.01 * distance_target_cm_;
+    const double measured_distance_m = 0.01 * static_cast<double>(last_distance_cm_);
+    const double deadband_m = 0.01 * distance_deadband_cm_;
+    const double error_m = target_distance_m - measured_distance_m;
+
+    if (std::abs(error_m) <= deadband_m)
+    {
+      return;
+    }
+
+    const double correction_m = std::clamp(
+        distance_kp_ * error_m,
+        -distance_max_corr_m_,
+        distance_max_corr_m_);
+
+    if (distance_mode_ == DISTANCE_MODE_FRONT)
+    {
+      Eigen::Vector3d forward_world = odom_orient_ * Eigen::Vector3d::UnitX();
+      forward_world.z() = 0.0;
+
+      const double forward_norm = forward_world.norm();
+      if (forward_norm < 1e-6)
+      {
+        RCLCPP_WARN_THROTTLE(
+            node_->get_logger(),
+            *node_->get_clock(),
+            2000,
+            "Front distance mode could not project robot forward axis onto XY. Skipping correction.");
+        return;
+      }
+
+      forward_world /= forward_norm;
+      local_target_pt_ -= correction_m * forward_world;
+    }
+    else if (distance_mode_ == DISTANCE_MODE_DOWN)
+    {
+      local_target_pt_.z() += correction_m;
+    }
+  }
 
   void EGOReplanFSM::init(rclcpp::Node::SharedPtr &node)
   {
@@ -36,8 +162,10 @@ namespace ego_planner
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
     node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
+    loadDistanceControlParams();
 
     have_trigger_ = !flag_realworld_experiment_;
+    odom_orient_.setIdentity();
 
     node_->declare_parameter("fsm/waypoint_num", -1);
     node_->get_parameter("fsm/waypoint_num", waypoint_num_);
@@ -74,6 +202,14 @@ namespace ego_planner
         [this](const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
         {
           this->odometryCallback(msg);
+        });
+
+    distance_sub_ = node_->create_subscription<std_msgs::msg::Float32>(
+        distance_topic_,
+        10,
+        [this](const std::shared_ptr<const std_msgs::msg::Float32> &msg)
+        {
+          this->distanceCallback(msg);
         });
 
     set_velocity_acceleration_service_ = node_->create_service<traj_utils::srv::VelAccCmd>(
@@ -160,6 +296,13 @@ namespace ego_planner
     }
     else
       cout << "Wrong target_type_ value! target_type_=" << target_type_ << endl;
+
+    RCLCPP_INFO(
+        node_->get_logger(),
+        "Distance control mode: %s (topic=%s, target=%.2f cm)",
+        distance_mode_str_.c_str(),
+        distance_topic_.c_str(),
+        distance_target_cm_);
   }
   
   void EGOReplanFSM::setErrorThresholdCallback(
@@ -305,6 +448,13 @@ namespace ego_planner
     odom_orient_.z() = msg->pose.pose.orientation.z;
 
     have_odom_ = true;
+  }
+
+  void EGOReplanFSM::distanceCallback(const std::shared_ptr<const std_msgs::msg::Float32> &msg)
+  {
+    last_distance_cm_ = msg->data;
+    last_distance_stamp_ = node_->get_clock()->now();
+    have_distance_measurement_ = true;
   }
 
 
@@ -773,6 +923,7 @@ namespace ego_planner
   {
 
     getLocalTarget();
+    applyDistanceConstraintToLocalTarget();
 
     bool plan_and_refine_success =
         planner_manager_->reboundReplan(start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_, (have_new_target_ || flag_use_poly_init), flag_randomPolyTraj);
