@@ -1,10 +1,16 @@
 ego_planner_node:
   ros__parameters:
-    fsm:
-      distance_mode: "down"
-      distance_topic: "/min_distance"
-      distance_target_cm: 100.0
-      distance_deadband_cm: 5.0
-      distance_kp: 1.0
-      distance_max_corr_m: 0.50
-      distance_timeout_s: 0.5
+    fsm/thresh_replan_time: 0.5
+    fsm/planning_horizon: 2.0
+    manager/planning_horizon: 2.0
+    manager/max_vel: 0.5
+    optimization/max_vel: 0.5
+    bspline/limit_vel: 0.5
+    fsm/distance_mode: "down"
+    fsm/distance_topic: "/min_distance"
+    fsm/distance_target_m: 1.0
+    fsm/distance_deadband_m: 0.05
+    fsm/distance_kp: 1.0
+    fsm/distance_max_corr_m: 0.50
+    fsm/distance_timeout_s: 0.5
+    fsm/min_depth_below_surface_m: 0.30

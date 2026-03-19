@@ -25,19 +25,21 @@ namespace ego_planner
   {
     node_->declare_parameter("fsm/distance_mode", std::string("none"));
     node_->declare_parameter("fsm/distance_topic", std::string("/distance"));
-    node_->declare_parameter("fsm/distance_target_cm", 10.0);
-    node_->declare_parameter("fsm/distance_deadband_cm", 0.5);
+    node_->declare_parameter("fsm/distance_target_m", 0.10);
+    node_->declare_parameter("fsm/distance_deadband_m", 0.005);
     node_->declare_parameter("fsm/distance_kp", 1.0);
     node_->declare_parameter("fsm/distance_max_corr_m", 0.10);
     node_->declare_parameter("fsm/distance_timeout_s", 0.5);
+    node_->declare_parameter("fsm/min_depth_below_surface_m", 0.30);
 
     node_->get_parameter("fsm/distance_mode", distance_mode_str_);
     node_->get_parameter("fsm/distance_topic", distance_topic_);
-    node_->get_parameter("fsm/distance_target_cm", distance_target_cm_);
-    node_->get_parameter("fsm/distance_deadband_cm", distance_deadband_cm_);
+    node_->get_parameter("fsm/distance_target_m", distance_target_m_);
+    node_->get_parameter("fsm/distance_deadband_m", distance_deadband_m_);
     node_->get_parameter("fsm/distance_kp", distance_kp_);
     node_->get_parameter("fsm/distance_max_corr_m", distance_max_corr_m_);
     node_->get_parameter("fsm/distance_timeout_s", distance_timeout_s_);
+    node_->get_parameter("fsm/min_depth_below_surface_m", min_depth_below_surface_m_);
 
     distance_mode_str_ = normalizeModeString(distance_mode_str_);
     if (distance_mode_str_ == "none")
@@ -92,9 +94,9 @@ namespace ego_planner
       return;
     }
 
-    const double target_distance_m = 0.01 * distance_target_cm_;
-    const double measured_distance_m = 0.01 * static_cast<double>(last_distance_cm_);
-    const double deadband_m = 0.01 * distance_deadband_cm_;
+    const double target_distance_m = distance_target_m_;
+    const double measured_distance_m = static_cast<double>(last_distance_m_);
+    const double deadband_m = distance_deadband_m_;
     const double error_m = target_distance_m - measured_distance_m;
 
     if (std::abs(error_m) <= deadband_m)
@@ -106,6 +108,11 @@ namespace ego_planner
         distance_kp_ * error_m,
         -distance_max_corr_m_,
         distance_max_corr_m_);
+    const Eigen::Vector3d nominal_local_target = local_target_pt_;
+    bool clamped_by_measurement_limit = false;
+    bool clamped_by_surface_limit = false;
+    double unclamped_target_z = local_target_pt_.z();
+    double measurement_limited_z = local_target_pt_.z();
 
     if (distance_mode_ == DISTANCE_MODE_FRONT)
     {
@@ -129,6 +136,64 @@ namespace ego_planner
     else if (distance_mode_ == DISTANCE_MODE_DOWN)
     {
       local_target_pt_.z() += correction_m;
+      unclamped_target_z = local_target_pt_.z();
+      measurement_limited_z = odom_pos_.z() + correction_m;
+
+      if ((correction_m < 0.0 && local_target_pt_.z() < measurement_limited_z) ||
+          (correction_m > 0.0 && local_target_pt_.z() > measurement_limited_z))
+      {
+        local_target_pt_.z() = measurement_limited_z;
+        clamped_by_measurement_limit = true;
+      }
+
+      const double max_allowed_z = -std::abs(min_depth_below_surface_m_);
+      if (local_target_pt_.z() > max_allowed_z)
+      {
+        local_target_pt_.z() = max_allowed_z;
+        clamped_by_surface_limit = true;
+      }
+    }
+
+    RCLCPP_INFO_THROTTLE(
+        node_->get_logger(),
+        *node_->get_clock(),
+        1000,
+        "Distance correction [%s]: measured=%.3f m target=%.3f m error=%.3f m corr=%.3f m local_target=(%.3f, %.3f, %.3f)->(%.3f, %.3f, %.3f)",
+        distance_mode_str_.c_str(),
+        measured_distance_m,
+        target_distance_m,
+        error_m,
+        correction_m,
+        nominal_local_target.x(),
+        nominal_local_target.y(),
+        nominal_local_target.z(),
+        local_target_pt_.x(),
+        local_target_pt_.y(),
+        local_target_pt_.z());
+
+    if (clamped_by_measurement_limit)
+    {
+      RCLCPP_INFO_THROTTLE(
+          node_->get_logger(),
+          *node_->get_clock(),
+          1000,
+          "Distance correction clamped by odom-relative limit: requested_z=%.3f -> clamped_z=%.3f (odom_z=%.3f corr=%.3f)",
+          unclamped_target_z,
+          local_target_pt_.z(),
+          odom_pos_.z(),
+          correction_m);
+    }
+
+    if (clamped_by_surface_limit)
+    {
+      RCLCPP_INFO_THROTTLE(
+          node_->get_logger(),
+          *node_->get_clock(),
+          1000,
+          "Distance correction clamped by surface limit: requested_z=%.3f -> clamped_z=%.3f (min_depth_below_surface_m=%.3f)",
+          unclamped_target_z,
+          local_target_pt_.z(),
+          min_depth_below_surface_m_);
     }
   }
 
@@ -299,10 +364,10 @@ namespace ego_planner
 
     RCLCPP_INFO(
         node_->get_logger(),
-        "Distance control mode: %s (topic=%s, target=%.2f cm)",
+        "Distance control mode: %s (topic=%s, target=%.3f m)",
         distance_mode_str_.c_str(),
         distance_topic_.c_str(),
-        distance_target_cm_);
+        distance_target_m_);
   }
   
   void EGOReplanFSM::setErrorThresholdCallback(
@@ -419,11 +484,16 @@ namespace ego_planner
       return;
       }
 
+    Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
+    if (have_odom_ && (end_wp - odom_pos_).norm() < 1e-3)
+    {
+      RCLCPP_WARN(node_->get_logger(), "Ignoring waypoint equal to current odometry pose.");
+      return;
+    }
+
     cout << "New Waypoint received!" << endl;
 
     init_pt_ = odom_pos_;
-
-    Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
 
     planNextWaypoint(end_wp);
   }
@@ -452,7 +522,7 @@ namespace ego_planner
 
   void EGOReplanFSM::distanceCallback(const std::shared_ptr<const std_msgs::msg::Float32> &msg)
   {
-    last_distance_cm_ = msg->data;
+    last_distance_m_ = msg->data;
     last_distance_stamp_ = node_->get_clock()->now();
     have_distance_measurement_ = true;
   }

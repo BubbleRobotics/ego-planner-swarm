@@ -78,11 +78,12 @@ namespace ego_planner
     DISTANCE_CONTROL_MODE distance_mode_{DISTANCE_MODE_NONE};
     std::string distance_mode_str_{"none"};
     std::string distance_topic_{"/distance"};
-    double distance_target_cm_{10.0};
-    double distance_deadband_cm_{0.5};
+    double distance_target_m_{0.10};
+    double distance_deadband_m_{0.005};
     double distance_kp_{1.0};
     double distance_max_corr_m_{0.10};
     double distance_timeout_s_{0.5};
+    double min_depth_below_surface_m_{0.30};
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
@@ -99,7 +100,7 @@ namespace ego_planner
     Eigen::Vector3d local_target_pt_, local_target_vel_;                     // local target state
     std::vector<Eigen::Vector3d> wps_;
     int current_wp_;
-    float last_distance_cm_{0.0F};
+    float last_distance_m_{0.0F};
     rclcpp::Time last_distance_stamp_;
 
     bool flag_escape_emergency_;
