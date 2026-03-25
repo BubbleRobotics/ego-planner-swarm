@@ -14,3 +14,4 @@ ego_planner_node:
     fsm/distance_max_corr_m: 0.50
     fsm/distance_timeout_s: 0.5
     fsm/min_depth_below_surface_m: 0.30
+    fsm/xy_goal_checks_in_down_mode: false

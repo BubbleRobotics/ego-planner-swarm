@@ -468,8 +468,16 @@ void cmdCallback()
     vel.setZero();
     acc.setZero();
 
-    yaw_yawdot.first = last_yaw_;
-    yaw_yawdot.second = 0;
+    if (use_snake_yaw)
+    {
+      yaw_yawdot.first = snake_yaw;
+      yaw_yawdot.second = 0.0;
+    }
+    else
+    {
+      yaw_yawdot.first = last_yaw_;
+      yaw_yawdot.second = 0.0;
+    }
 
     pos_f = pos;
   }

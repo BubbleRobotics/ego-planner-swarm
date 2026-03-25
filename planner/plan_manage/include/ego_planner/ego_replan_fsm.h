@@ -84,6 +84,7 @@ namespace ego_planner
     double distance_max_corr_m_{0.10};
     double distance_timeout_s_{0.5};
     double min_depth_below_surface_m_{0.30};
+    bool xy_goal_checks_in_down_mode_{false};
 
     /* planning data */
     bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;

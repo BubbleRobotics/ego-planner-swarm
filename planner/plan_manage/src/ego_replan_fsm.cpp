@@ -31,6 +31,7 @@ namespace ego_planner
     node_->declare_parameter("fsm/distance_max_corr_m", 0.10);
     node_->declare_parameter("fsm/distance_timeout_s", 0.5);
     node_->declare_parameter("fsm/min_depth_below_surface_m", 0.30);
+    node_->declare_parameter("fsm/xy_goal_checks_in_down_mode", false);
 
     node_->get_parameter("fsm/distance_mode", distance_mode_str_);
     node_->get_parameter("fsm/distance_topic", distance_topic_);
@@ -40,6 +41,7 @@ namespace ego_planner
     node_->get_parameter("fsm/distance_max_corr_m", distance_max_corr_m_);
     node_->get_parameter("fsm/distance_timeout_s", distance_timeout_s_);
     node_->get_parameter("fsm/min_depth_below_surface_m", min_depth_below_surface_m_);
+    node_->get_parameter("fsm/xy_goal_checks_in_down_mode", xy_goal_checks_in_down_mode_);
 
     distance_mode_str_ = normalizeModeString(distance_mode_str_);
     if (distance_mode_str_ == "none")
@@ -364,10 +366,11 @@ namespace ego_planner
 
     RCLCPP_INFO(
         node_->get_logger(),
-        "Distance control mode: %s (topic=%s, target=%.3f m)",
+        "Distance control mode: %s (topic=%s, target=%.3f m, xy_goal_checks_in_down_mode=%s)",
         distance_mode_str_.c_str(),
         distance_topic_.c_str(),
-        distance_target_m_);
+        distance_target_m_,
+        xy_goal_checks_in_down_mode_ ? "true" : "false");
   }
   
   void EGOReplanFSM::setErrorThresholdCallback(
@@ -747,6 +750,11 @@ namespace ego_planner
       t_cur = std::min(info->duration_, t_cur);
 
       Eigen::Vector3d pos = info->position_traj_.evaluateDeBoorT(t_cur);
+      const bool use_xy_goal_checks =
+          (distance_mode_ == DISTANCE_MODE_DOWN) && xy_goal_checks_in_down_mode_;
+      const auto goal_distance = [use_xy_goal_checks](const Eigen::Vector3d &a, const Eigen::Vector3d &b) {
+        return use_xy_goal_checks ? (a.head<2>() - b.head<2>()).norm() : (a - b).norm();
+      };
       /* && (end_pt_ - pos).norm() < 0.5 */
       if ((pos - odom_pos_).norm() > pos_error_threshold_)
       {
@@ -757,7 +765,7 @@ namespace ego_planner
 
       if ((target_type_ == TARGET_TYPE::PRESET_TARGET) &&
           (wp_id_ < waypoint_num_ - 1) &&
-          (end_pt_ - pos).norm() < no_replan_thresh_)
+          goal_distance(end_pt_, pos) < no_replan_thresh_)
       {
         wp_id_++;
         planNextWaypoint(wps_[wp_id_]);
@@ -776,7 +784,7 @@ namespace ego_planner
           }
           // If the local target is the same as the global target, 
           // check actual estimated distance to the target to decide whether to plan another trajectory.
-          if ((end_pt_ - odom_pos_).norm() > no_replan_thresh_){
+          if (goal_distance(end_pt_, odom_pos_) > no_replan_thresh_){
             have_target_ = true;
             have_trigger_ = true;
             changeFSMExecState(REPLAN_TRAJ, "FSM");
@@ -786,7 +794,7 @@ namespace ego_planner
             
           goto force_return;
         }
-        else if ((end_pt_ - pos).norm() > no_replan_thresh_ && t_cur > replan_thresh_)
+        else if (goal_distance(end_pt_, pos) > no_replan_thresh_ && t_cur > replan_thresh_)
         {
           changeFSMExecState(REPLAN_TRAJ, "FSM");
         }
