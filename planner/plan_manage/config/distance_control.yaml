@@ -7,8 +7,8 @@ ego_planner_node:
     optimization/max_vel: 0.5
     bspline/limit_vel: 0.5
     fsm/distance_mode: "down"
-    fsm/distance_topic: "/min_distance"
-    fsm/distance_target_m: 1.414
+    fsm/distance_topic: "/sonar/distance"
+    fsm/distance_target_m: 0.9
     fsm/distance_deadband_m: 0.05
     fsm/distance_kp: 1.0
     fsm/distance_max_corr_m: 0.50

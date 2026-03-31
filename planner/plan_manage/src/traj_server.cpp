@@ -95,6 +95,8 @@ int traj_id_;
 
 // yaw control
 double last_yaw_, last_yaw_dot_;
+double last_yaw_unwrapped_;
+bool yaw_initialized_ = false;
 double time_forward_;
 bool use_snake_yaw = false;
 double snake_yaw = 0.0;
@@ -121,6 +123,17 @@ static inline double angleDiff(double target, double current)
   // shortest signed difference target-current in [-pi,pi]
   //cout << "ANGLE DIFF: target " << target << " current " << current << endl;
   return wrapToPi(target - current);
+}
+
+static inline double clampd(double x, double lo, double hi)
+{
+  return std::max(lo, std::min(hi, x));
+}
+
+// Returns an angle equivalent to angle_wrapped, but closest to reference_unwrapped.
+static inline double unwrapNear(double angle_wrapped, double reference_unwrapped)
+{
+  return reference_unwrapped + angleDiff(angle_wrapped, wrapToPi(reference_unwrapped));
 }
 
 
@@ -315,104 +328,123 @@ void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
   receive_traj_ = true;
 }
 
-std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, double dt)
+std::pair<double, double> calculate_yaw(
+    double t_cur,
+    const Eigen::Vector3d& pos,
+    const Eigen::Vector3d& vel,
+    const Eigen::Vector3d& acc,
+    double yaw_meas,
+    double dt)
 {
-  // If the robot is in inspection mode, use the fixed orientation provided by snake_yaw.
   if (use_snake_yaw)
   {
-    return std::make_pair(snake_yaw, 0.0);
+    double snake_yaw_unwrapped;
+    if (!yaw_initialized_) {
+      snake_yaw_unwrapped = snake_yaw;
+      yaw_initialized_ = true;
+    } else {
+      snake_yaw_unwrapped = unwrapNear(snake_yaw, last_yaw_unwrapped_);
+    }
+
+    last_yaw_unwrapped_ = snake_yaw_unwrapped;
+    last_yaw_ = wrapToPi(last_yaw_unwrapped_);
+    last_yaw_dot_ = 0.0;
+    return {last_yaw_, 0.0};
   }
 
-  
-  constexpr double YAW_DOT_MAX_PER_SEC = PI;
-  // constexpr double YAW_DOT_DOT_MAX_PER_SEC = PI;
-  std::pair<double, double> yaw_yawdot(0, 0);
-  double yaw = 0;
-  double yawdot = 0;
+  constexpr double VEL_EPS_LOW = 0.15;
+  constexpr double VEL_EPS_HIGH = 0.30;
+  constexpr double POS_EPS = 0.05;
+  constexpr double YAW_DOT_MAX = 1.0;
+  constexpr double TAU_YAW = 0.15;
 
-  Eigen::Vector3d dir = t_cur + time_forward_ <= traj_duration_ ? traj_[0].evaluateDeBoorT(t_cur + time_forward_) - pos : traj_[0].evaluateDeBoorT(traj_duration_) - pos;
-  double yaw_temp = dir.norm() > 0.1 ? atan2(dir(1), dir(0)) : last_yaw_;
-  double max_yaw_change = YAW_DOT_MAX_PER_SEC * dt;
-  if (yaw_temp - last_yaw_ > PI)
-  {
-    if (yaw_temp - last_yaw_ - 2 * PI < -max_yaw_change)
-    {
-      yaw = last_yaw_ - max_yaw_change;
-      if (yaw < -PI)
-        yaw += 2 * PI;
-
-      yawdot = -YAW_DOT_MAX_PER_SEC;
-    }
-    else
-    {
-      yaw = yaw_temp;
-      if (yaw - last_yaw_ > PI)
-        yawdot = -YAW_DOT_MAX_PER_SEC;
-      else
-        yawdot = (yaw_temp - last_yaw_) / dt;
-    }
+  if (dt <= 1e-6) {
+    return {last_yaw_, last_yaw_dot_};
   }
-  else if (yaw_temp - last_yaw_ < -PI)
-  {
-    if (yaw_temp - last_yaw_ + 2 * PI > max_yaw_change)
-    {
-      yaw = last_yaw_ + max_yaw_change;
-      if (yaw > PI)
-        yaw -= 2 * PI;
 
-      yawdot = YAW_DOT_MAX_PER_SEC;
-    }
-    else
-    {
-      yaw = yaw_temp;
-      if (yaw - last_yaw_ < -PI)
-        yawdot = YAW_DOT_MAX_PER_SEC;
-      else
-        yawdot = (yaw_temp - last_yaw_) / dt;
-    }
+  const double lookahead_dt = (time_forward_ > 1e-3) ? time_forward_ : 0.5;
+  const double vx = vel.x();
+  const double vy = vel.y();
+  const double ax = acc.x();
+  const double ay = acc.y();
+  const double speed = std::hypot(vx, vy);
+  const double v2 = vx * vx + vy * vy;
+
+  double yaw_geom_wrapped = yaw_meas;
+  double yawdot_ff = 0.0;
+
+  if (speed >= VEL_EPS_HIGH)
+  {
+    yaw_geom_wrapped = std::atan2(vy, vx);
+    yawdot_ff = (vx * ay - vy * ax) / std::max(v2, 1e-6);
   }
   else
   {
-    if (yaw_temp - last_yaw_ < -max_yaw_change)
-    {
-      yaw = last_yaw_ - max_yaw_change;
-      if (yaw < -PI)
-        yaw += 2 * PI;
+    const double t_look = std::min(t_cur + lookahead_dt, traj_duration_);
+    const Eigen::Vector3d p_look = traj_[0].evaluateDeBoorT(t_look);
+    const Eigen::Vector3d dir = p_look - pos;
+    const double dir_norm = dir.head<2>().norm();
 
-      yawdot = -YAW_DOT_MAX_PER_SEC;
+    if (dir_norm > POS_EPS) {
+      yaw_geom_wrapped = std::atan2(dir.y(), dir.x());
+    } else if (speed > 1e-3) {
+      yaw_geom_wrapped = std::atan2(vy, vx);
+    } else if (yaw_initialized_) {
+      yaw_geom_wrapped = wrapToPi(last_yaw_unwrapped_);
+    } else {
+      yaw_geom_wrapped = yaw_meas;
     }
-    else if (yaw_temp - last_yaw_ > max_yaw_change)
-    {
-      yaw = last_yaw_ + max_yaw_change;
-      if (yaw > PI)
-        yaw -= 2 * PI;
 
-      yawdot = YAW_DOT_MAX_PER_SEC;
-    }
-    else
-    {
-      yaw = yaw_temp;
-      if (yaw - last_yaw_ > PI)
-        yawdot = -YAW_DOT_MAX_PER_SEC;
-      else if (yaw - last_yaw_ < -PI)
-        yawdot = YAW_DOT_MAX_PER_SEC;
-      else
-        yawdot = (yaw_temp - last_yaw_) / dt;
-    }
+    yawdot_ff = 0.0;
   }
-  if (yawdot > 1 || yawdot < -1){
-    cout << "YAWDOT" << yawdot << " DT" << dt << " YAWTEMP" << yaw_temp << " LASTYAW" << last_yaw_ << endl;
-  }
-  if (fabs(yaw - last_yaw_) <= max_yaw_change)
-    yaw = 0.5 * last_yaw_ + 0.5 * yaw; // nieve LPF
-  yawdot = 0.5 * last_yaw_dot_ + 0.5 * yawdot;
-  last_yaw_ = yaw;
-  last_yaw_dot_ = yawdot;
 
-  yaw_yawdot.first = yaw;
-  yaw_yawdot.second = yawdot;
-  
-  return yaw_yawdot;
+  if (speed > VEL_EPS_LOW && speed < VEL_EPS_HIGH)
+  {
+    const double t_look = std::min(t_cur + lookahead_dt, traj_duration_);
+    const Eigen::Vector3d p_look = traj_[0].evaluateDeBoorT(t_look);
+    const Eigen::Vector3d dir = p_look - pos;
+
+    double yaw_look_wrapped = yaw_geom_wrapped;
+    if (dir.head<2>().norm() > POS_EPS) {
+      yaw_look_wrapped = std::atan2(dir.y(), dir.x());
+    }
+
+    const double yaw_tangent_wrapped =
+        (v2 > 1e-6) ? std::atan2(vy, vx) : yaw_look_wrapped;
+    const double beta =
+        (speed - VEL_EPS_LOW) / (VEL_EPS_HIGH - VEL_EPS_LOW);
+
+    const double yaw_ref_base = yaw_initialized_ ? last_yaw_unwrapped_ : yaw_meas;
+    const double yaw_look_unwrapped = unwrapNear(yaw_look_wrapped, yaw_ref_base);
+    const double yaw_tangent_unwrapped = unwrapNear(yaw_tangent_wrapped, yaw_ref_base);
+    const double yaw_blend_unwrapped =
+        (1.0 - beta) * yaw_look_unwrapped + beta * yaw_tangent_unwrapped;
+
+    yaw_geom_wrapped = wrapToPi(yaw_blend_unwrapped);
+
+    const double yawdot_tangent = (vx * ay - vy * ax) / std::max(v2, 1e-6);
+    yawdot_ff = beta * yawdot_tangent;
+  }
+
+  yawdot_ff = clampd(yawdot_ff, -YAW_DOT_MAX, YAW_DOT_MAX);
+
+  if (!yaw_initialized_) {
+    last_yaw_unwrapped_ = unwrapNear(yaw_geom_wrapped, yaw_meas);
+    yaw_initialized_ = true;
+  }
+
+  const double yaw_des_unwrapped = unwrapNear(yaw_geom_wrapped, last_yaw_unwrapped_);
+  const double yaw_err = yaw_des_unwrapped - last_yaw_unwrapped_;
+
+  double yawdot_fb = yaw_err / TAU_YAW;
+  double yawdot_cmd = yawdot_ff + yawdot_fb;
+  yawdot_cmd = clampd(yawdot_cmd, -YAW_DOT_MAX, YAW_DOT_MAX);
+
+  last_yaw_unwrapped_ += yawdot_cmd * dt;
+  last_yaw_ = wrapToPi(last_yaw_unwrapped_);
+  last_yaw_dot_ = yawdot_cmd;
+
+  return {last_yaw_, last_yaw_dot_};
 }
 
 void snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg)
@@ -454,8 +486,19 @@ void cmdCallback()
     vel = traj_[1].evaluateDeBoorT(t_cur);
     acc = traj_[2].evaluateDeBoorT(t_cur);
 
+    double yaw_meas_for_ref = 0.0;
+    {
+      tf2::Quaternion q(
+        odom_orient_.x(),
+        odom_orient_.y(),
+        odom_orient_.z(),
+        odom_orient_.w());
+      double roll_tmp = 0.0, pitch_tmp = 0.0;
+      tf2::Matrix3x3(q).getRPY(roll_tmp, pitch_tmp, yaw_meas_for_ref);
+    }
+
     /*** calculate yaw ***/
-    yaw_yawdot = calculate_yaw(t_cur, pos, dt);
+    yaw_yawdot = calculate_yaw(t_cur, pos, vel, acc, yaw_meas_for_ref, dt);
     /*** calculate yaw ***/
 
     double tf = min(traj_duration_, t_cur + 2.0);
@@ -470,14 +513,17 @@ void cmdCallback()
 
     if (use_snake_yaw)
     {
-      yaw_yawdot.first = snake_yaw;
-      yaw_yawdot.second = 0.0;
+      if (!yaw_initialized_) {
+        last_yaw_unwrapped_ = snake_yaw;
+        yaw_initialized_ = true;
+      } else {
+        last_yaw_unwrapped_ = unwrapNear(snake_yaw, last_yaw_unwrapped_);
+      }
+      last_yaw_ = wrapToPi(last_yaw_unwrapped_);
     }
-    else
-    {
-      yaw_yawdot.first = last_yaw_;
-      yaw_yawdot.second = 0.0;
-    }
+
+    yaw_yawdot.first = last_yaw_;
+    yaw_yawdot.second = 0.0;
 
     pos_f = pos;
   }
@@ -510,6 +556,12 @@ void cmdCallback()
   pos_cmd_pub->publish(cmd);
 
   last_yaw_ = cmd.yaw;
+  if (!yaw_initialized_) {
+    last_yaw_unwrapped_ = cmd.yaw;
+    yaw_initialized_ = true;
+  } else {
+    last_yaw_unwrapped_ = unwrapNear(cmd.yaw, last_yaw_unwrapped_);
+  }
 
   Eigen::Vector3d p_des = pos;
   Eigen::Vector3d v_des = vel;
@@ -769,6 +821,8 @@ int main(int argc, char **argv)
 
   last_yaw_ = 0.0;
   last_yaw_dot_ = 0.0;
+  last_yaw_unwrapped_ = 0.0;
+  yaw_initialized_ = false;
   last_p_error.setZero();
   last_last_p_error.setZero();
   p_error_deriv_approx.setZero();
