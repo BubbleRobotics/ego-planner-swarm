@@ -28,6 +28,8 @@ rosidl_generate_interfaces(traj_utils
   "msg/DataDisp.msg"
   "msg/MultiBsplines.msg"
   "msg/SnakeYaw.msg"
+  "msg/TrajectorySample.msg"
+  "msg/OptimizedTrajectory.msg"
   "srv/VelAccCmd.srv"
   "srv/SetErrorThreshold.srv"
   DEPENDENCIES std_msgs geometry_msgs rclcpp builtin_interfaces
@@ -63,6 +65,9 @@ add_library( traj_utils_lib SHARED
 
 ament_target_dependencies(traj_utils_lib std_msgs geometry_msgs visualization_msgs rclcpp Eigen3 PCL)
 
+rosidl_target_interfaces(traj_utils_lib
+  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+  
 install(TARGETS traj_utils_lib
         DESTINATION lib
 )

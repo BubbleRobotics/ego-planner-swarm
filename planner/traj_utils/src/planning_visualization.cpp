@@ -251,5 +251,18 @@ namespace ego_planner
     pub->publish(array);
   }
 
+  void PlanningVisualization::optimizedTrajCallback(traj_utils::msg::OptimizedTrajectory::ConstSharedPtr msg)
+  {
+    vector<Eigen::Vector3d> pos_samples;
+    pos_samples.reserve(msg->points.size());
+    for (const auto& p : msg->points)
+    {
+      pos_samples.emplace_back(p.position.x, p.position.y, p.position.z);
+    }
+    Eigen::Vector4d color(1, 0, 0, 1);
+    int id = 0;
+    displayMarkerList(optimal_list_pub, pos_samples, 0.15, color, id);
+  }
+
   // PlanningVisualization::
 } // namespace ego_planner

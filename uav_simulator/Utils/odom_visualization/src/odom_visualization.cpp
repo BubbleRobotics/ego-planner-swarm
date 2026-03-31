@@ -15,6 +15,8 @@
 #include "pose_utils/pose_utils.h"
 #include "quadrotor_msgs/msg/position_command.hpp"
 #include "std_msgs/msg/float64.hpp"
+#include "traj_utils/msg/optimized_trajectory.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 using namespace arma;
 using namespace std;
@@ -485,6 +487,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
     }
 }
 
+
 void cmd_callback(const quadrotor_msgs::msg::PositionCommand cmd)
 {
     if (cmd.header.frame_id == string("null"))
@@ -581,6 +584,16 @@ int main(int argc, char **argv)
     auto sub_goal = node->create_subscription<geometry_msgs::msg::PoseStamped>(
         "ego_planner/move_base_simple/goal", 100, goal_callback);
 
+    auto reset_odom_service = node->create_service<std_srvs::srv::Trigger>(
+        "/odometry_visualization/reset_odometry_visualization",
+        [](const std_srvs::srv::Trigger::Request::SharedPtr request,
+           std_srvs::srv::Trigger::Response::SharedPtr response) {
+            // Reset the path message on service call
+            pathROS = nav_msgs::msg::Path();
+            response->success = true;
+            response->message = "Odometry visualization reset successfully.";
+        });
+        
     goalPub = node->create_publisher<geometry_msgs::msg::PointStamped>("goal", 100);
     posePub = node->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 100);
     pathPub = node->create_publisher<nav_msgs::msg::Path>("path", 100);
@@ -592,6 +605,7 @@ int main(int argc, char **argv)
     meshPub = node->create_publisher<visualization_msgs::msg::Marker>("robot", 100);
     meshPub2 = node->create_publisher<visualization_msgs::msg::Marker>("robot2", 100);
     heightPub = node->create_publisher<sensor_msgs::msg::Range>("height", 100);
+   
 
     timePub = node->create_publisher<std_msgs::msg::Float64>("time_gap", 100);
     

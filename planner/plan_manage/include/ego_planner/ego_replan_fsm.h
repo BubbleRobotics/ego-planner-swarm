@@ -23,6 +23,7 @@
 #include <traj_utils/srv/vel_acc_cmd.hpp>
 #include <traj_utils/srv/set_error_threshold.hpp>
 #include "geometry_msgs/msg/point_stamped.hpp"
+#include <std_srvs/srv/trigger.hpp>
 
 using std::vector;
 
@@ -104,6 +105,7 @@ namespace ego_planner
 
     rclcpp::Service<traj_utils::srv::VelAccCmd>::SharedPtr set_velocity_acceleration_service_;
     rclcpp::Service<traj_utils::srv::SetErrorThreshold>::SharedPtr set_error_threshold_service_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_ego_state_service_;
 
     /* helper functions */
     bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj); // front-end and back-end method
@@ -125,6 +127,8 @@ namespace ego_planner
                           std::shared_ptr<traj_utils::srv::VelAccCmd::Response> response);
     void setErrorThresholdCallback(const std::shared_ptr<traj_utils::srv::SetErrorThreshold::Request> request,
                           std::shared_ptr<traj_utils::srv::SetErrorThreshold::Response> response);
+    void resetEgoStateCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                          std::shared_ptr<std_srvs::srv::Trigger::Response> response);
     void execFSMCallback();
     void checkCollisionCallback();
     void waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg);

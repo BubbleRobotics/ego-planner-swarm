@@ -12,6 +12,8 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <stdlib.h>
+#include "traj_utils/msg/optimized_trajectory.hpp"
+#include <functional>
 
 using std::vector;
 namespace ego_planner
@@ -25,6 +27,7 @@ namespace ego_planner
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr init_list_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr optimal_list_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr a_star_list_pub;
+    rclcpp::Subscription<traj_utils::msg::OptimizedTrajectory>::SharedPtr optimized_trajectory_sub;
     // ros::Publisher guide_vector_pub;
     // ros::Publisher intermediate_state_pub;
 
@@ -39,7 +42,12 @@ namespace ego_planner
       init_list_pub = node_->create_publisher<visualization_msgs::msg::Marker>("init_list", 2);
       optimal_list_pub = node_->create_publisher<visualization_msgs::msg::Marker>("optimal_list", 2);
       a_star_list_pub = node_->create_publisher<visualization_msgs::msg::Marker>("a_star_list", 20);
-    }
+      optimized_trajectory_sub = node_->create_subscription<traj_utils::msg::OptimizedTrajectory>(
+        "planning/optimized_trajectory",
+        10,
+        std::bind(&PlanningVisualization::optimizedTrajCallback, this, std::placeholders::_1));
+      }
+
 
     typedef std::shared_ptr<PlanningVisualization> Ptr;
 
@@ -56,6 +64,7 @@ namespace ego_planner
     void displayOptimalList(Eigen::MatrixXd optimal_pts, int id);
     void displayAStarList(std::vector<std::vector<Eigen::Vector3d>> a_star_paths, int id);
     void displayArrowList(rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr &pub, const std::vector<Eigen::Vector3d> &list, double scale, Eigen::Vector4d color, int id);
+    void optimizedTrajCallback(traj_utils::msg::OptimizedTrajectory::ConstSharedPtr msg);
     // void displayIntermediateState(ros::Publisher& intermediate_pub, ego_planner::BsplineOptimizer::Ptr optimizer, double sleep_time, const int start_iteration);
     // void displayNewArrow(ros::Publisher& guide_vector_pub, ego_planner::BsplineOptimizer::Ptr optimizer);
   };

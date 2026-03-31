@@ -22,6 +22,8 @@ find_package(tf2 REQUIRED)
 find_package(Armadillo REQUIRED)
 find_package(pose_utils REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(traj_utils REQUIRED)
+find_package(std_srvs REQUIRED)
 
 
 if(BUILD_TESTING)
@@ -53,6 +55,8 @@ ament_target_dependencies(odom_visualization
                           # Armadillo
                           pose_utils
                           tf2_ros
+                          traj_utils
+                          std_srvs
                           )
 
 target_link_libraries(odom_visualization

@@ -86,6 +86,11 @@ namespace ego_planner
         std::bind(&EGOReplanFSM::setErrorThresholdCallback, this,
         std::placeholders::_1, std::placeholders::_2)
       );
+    reset_ego_state_service_ = node_->create_service<std_srvs::srv::Trigger>(
+        "ego_planner/reset_ego_replan_fsm",
+        std::bind(&EGOReplanFSM::resetEgoStateCallback, this,
+        std::placeholders::_1, std::placeholders::_2)
+      );
 
     // std::bind(&EGOReplanFSM::odometryCallback, this, std::placeholders::_1));
 
@@ -167,6 +172,22 @@ namespace ego_planner
     std::shared_ptr<traj_utils::srv::SetErrorThreshold::Response> response)
   {
     pos_error_threshold_ = request->pos_error_threshold;
+    response->success = true;
+    return;
+  }
+
+  void EGOReplanFSM::resetEgoStateCallback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+  {
+    // Reset the FSM state and all flags. Used in repeated testing to reset the state of the ego drone without having to restart the entire node.
+    (void)request; // avoid unused parameter warning
+    cout << "[EGOReplanFSM] RESET EGO REPLAN FSM!" << endl;
+    changeFSMExecState(FSM_EXEC_STATE::INIT, "RESET");
+    have_odom_ = false;
+    have_target_ = false;
+    have_trigger_ = false;
+    planner_manager_->grid_map_->resetBuffer();
     response->success = true;
     return;
   }
@@ -612,7 +633,7 @@ namespace ego_planner
   bool EGOReplanFSM::planFromGlobalTraj(const int trial_times /*=1*/) // zx-todo
   {
     start_pt_ = odom_pos_;
-    start_vel_ = odom_vel_;
+    start_vel_.setZero(); // TODO check if this fixed inital crazy movement issues
     start_acc_.setZero();
 
     bool flag_random_poly_init;

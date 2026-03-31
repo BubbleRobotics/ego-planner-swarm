@@ -125,7 +125,7 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time},
             {'fsm/flight_type': flight_type},
             {'fsm/thresh_replan_time': 1.0},
-            {'fsm/thresh_no_replan_meter': 0.05},
+            {'fsm/thresh_no_replan_meter': 0.5},
             {'fsm/planning_horizon': planning_horizon},
             {'fsm/planning_horizen_time': 3.0},
             {'fsm/emergency_time': 1.0},
