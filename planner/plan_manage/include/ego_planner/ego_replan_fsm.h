@@ -8,6 +8,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include <vector>
@@ -109,6 +110,7 @@ namespace ego_planner
     /* ROS utils */
     rclcpp::Node::SharedPtr node_;
     rclcpp::TimerBase::SharedPtr exec_timer_, safety_timer_;
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr distance_params_cb_handle_;
 
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
@@ -144,6 +146,8 @@ namespace ego_planner
     void loadDistanceControlParams();
     void applyDistanceConstraintToLocalTarget();
     bool distanceMeasurementFresh() const;
+    rcl_interfaces::msg::SetParametersResult distanceParamsCallback(
+        const std::vector<rclcpp::Parameter> &params);
 
     /* ROS functions */
     void velAccCmdCallback(const std::shared_ptr<traj_utils::srv::VelAccCmd::Request> request,

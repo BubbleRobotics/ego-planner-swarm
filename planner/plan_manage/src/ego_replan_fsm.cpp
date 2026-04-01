@@ -78,6 +78,55 @@ namespace ego_planner
     return age.seconds() <= distance_timeout_s_;
   }
 
+  rcl_interfaces::msg::SetParametersResult EGOReplanFSM::distanceParamsCallback(
+      const std::vector<rclcpp::Parameter> &params)
+  {
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+
+    double new_distance_target_m = distance_target_m_;
+    bool distance_target_updated = false;
+
+    for (const auto &param : params)
+    {
+      if (param.get_name() != "fsm/distance_target_m")
+      {
+        continue;
+      }
+
+      if (param.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE &&
+          param.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER)
+      {
+        result.successful = false;
+        result.reason = "fsm/distance_target_m must be numeric";
+        return result;
+      }
+
+      new_distance_target_m = param.as_double();
+      if (new_distance_target_m <= 0.0)
+      {
+        result.successful = false;
+        result.reason = "fsm/distance_target_m must be > 0";
+        return result;
+      }
+
+      distance_target_updated = true;
+    }
+
+    if (!distance_target_updated)
+    {
+      return result;
+    }
+
+    distance_target_m_ = new_distance_target_m;
+    RCLCPP_INFO(
+        node_->get_logger(),
+        "Updated fsm/distance_target_m -> %.3f m",
+        distance_target_m_);
+
+    return result;
+  }
+
   void EGOReplanFSM::applyDistanceConstraintToLocalTarget()
   {
     if (distance_mode_ == DISTANCE_MODE_NONE)
@@ -230,6 +279,8 @@ namespace ego_planner
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
     node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
     loadDistanceControlParams();
+    distance_params_cb_handle_ = node_->add_on_set_parameters_callback(
+        std::bind(&EGOReplanFSM::distanceParamsCallback, this, std::placeholders::_1));
 
     have_trigger_ = !flag_realworld_experiment_;
     odom_orient_.setIdentity();

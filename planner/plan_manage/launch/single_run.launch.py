@@ -87,7 +87,7 @@ def generate_launch_description():
             
             'camera_pose_topic': 'pcl_render_node/camera_pose',
             'depth_topic': 'pcl_render_node/depth',
-            'cloud_topic': 'stereo/uncompressed/point_cloud',
+            'cloud_topic': 'oak2/stereo/points',
             
             'cx': str(321.04638671875),
             'cy': str(243.44969177246094),
