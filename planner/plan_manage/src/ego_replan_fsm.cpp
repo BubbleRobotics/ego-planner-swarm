@@ -36,7 +36,7 @@ namespace ego_planner
     node_->get_parameter("fsm/realworld_experiment", flag_realworld_experiment_);
     node_->get_parameter("fsm/fail_safe", enable_fail_safe_);
     node_->get_parameter("fsm/pos_error_threshold", pos_error_threshold_);
-
+    
     have_trigger_ = !flag_realworld_experiment_;
 
     node_->declare_parameter("fsm/waypoint_num", -1);
@@ -91,6 +91,7 @@ namespace ego_planner
         std::bind(&EGOReplanFSM::resetEgoStateCallback, this,
         std::placeholders::_1, std::placeholders::_2)
       );
+    reset_traj_controller_client_ = node_->create_client<std_srvs::srv::Trigger>("ego_traj_server/reset_trajectory_tracking_controller");
 
     // std::bind(&EGOReplanFSM::odometryCallback, this, std::placeholders::_1));
 
@@ -242,8 +243,9 @@ namespace ego_planner
   void EGOReplanFSM::planNextWaypoint(const Eigen::Vector3d next_wp)
   {
     bool success = false;
-    if (planner_manager_->pp_.use_snake_yaw) {
+    if (planner_manager_->pp_.use_snake_yaw || (exec_state_ == INIT) || (exec_state_ == GEN_NEW_TRAJ)) {
       // While inspecting in snake pattern robot should be still when sending the next waypoint
+      // Also, for the first time planning when there is no previous trajectory, we should use odom state to plan to ensure safety.
       success = planner_manager_->planGlobalTraj(odom_pos_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
     } else {
       success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
@@ -553,6 +555,13 @@ namespace ego_planner
       {
         RCLCPP_ERROR(node_->get_logger(), "Drone is too far from the planned trajectory! pos-odom=%.2f m. Replan!", (pos - odom_pos_).norm());
         changeFSMExecState(REPLAN_TRAJ, "TRAJ_CHECK");
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+        while (!reset_traj_controller_client_->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_INFO(node_->get_logger(), "Waiting for service...");
+        }
+
+        auto future = reset_traj_controller_client_->async_send_request(request);
+
         goto force_return;
       }
 
@@ -674,7 +683,7 @@ namespace ego_planner
       RCLCPP_WARN(
           node_->get_logger(),
           "Large tracking error detected when replanning: %.2f m. Use odom as start state.",
-          (start_pt_ - odom_pos_).norm());
+          (start_pt_ - odom_pos_).norm(), start_pt_ - odom_pos_);
 
       replan_from_odom = true;
       start_pt_ = odom_pos_;

@@ -106,6 +106,8 @@ namespace ego_planner
     rclcpp::Service<traj_utils::srv::VelAccCmd>::SharedPtr set_velocity_acceleration_service_;
     rclcpp::Service<traj_utils::srv::SetErrorThreshold>::SharedPtr set_error_threshold_service_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_ego_state_service_;
+    
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr reset_traj_controller_client_;
 
     /* helper functions */
     bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj); // front-end and back-end method

@@ -69,7 +69,7 @@ rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub;
 rclcpp::Subscription<std_msgs::msg::String>::SharedPtr controller_state_sub;
 rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr rviz_clicked_sub_;
 rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_traj_server_service_;
-
+rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_controller_service_;
 
 bool derivative_ready_ = false;
 bool second_ready_ = false;
@@ -412,8 +412,8 @@ void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointS
     cout << "New Point Clicked, sent Goal Point!" << endl;
     
     {
-      std::lock_guard<std::mutex> lkc(controller_state_mtx);
-      resetTrajectoryTrackingController();
+      // std::lock_guard<std::mutex> lkc(controller_state_mtx);
+      // resetTrajectoryTrackingController();
       new_goal_pub_->publish(new_goal_);
     }
   }
@@ -537,7 +537,7 @@ void bsplineCallback(const traj_utils::msg::Bspline::SharedPtr msg)
     return;
   }
 
-  resetTrajectoryTrackingController();
+  //resetTrajectoryTrackingController(); // TODO see if it is really a good idea to reset the controller state when we receive a new trajectory.
   start_time_ = msg->start_time;
   traj_id_ = msg->traj_id;
 
@@ -803,6 +803,7 @@ void cmdCallback()
         }
 
         yaw_yawdot = calculate_yaw(t_cur, pos, vel, acc, yaw_meas_for_ref, dt);
+        
 
           const double tf = min(traj_duration_, t_cur + 2.0);
           pos_f = traj_[0].evaluateDeBoorT(tf);
@@ -884,7 +885,7 @@ void cmdCallback()
     double roll_meas = 0.0;
     double pitch_meas = 0.0;
     tf2::Matrix3x3(q).getRPY(roll_meas, pitch_meas, yaw_meas);
-
+    // cout << "Yaw measured: " << yaw_meas << ", Yaw desired: " << cmd.yaw << ", Yaw rate feedforward: " << cmd.yaw_dot << endl;
     {
       std::lock_guard<std::mutex> lkg(gains_mtx);
       Kp = Kp_g;
@@ -980,17 +981,17 @@ int main(int argc, char **argv)
   auto node = rclcpp::Node::make_shared("traj_server");
   node_ = node;
 
-  node->declare_parameter("gains.kp.x", 0.6);
-  node->declare_parameter("gains.kp.y", 0.6);
-  node->declare_parameter("gains.kp.z", 0.6);
+  node->declare_parameter("gains.kp.x", 0.8);
+  node->declare_parameter("gains.kp.y", 0.8);
+  node->declare_parameter("gains.kp.z", 0.8);
 
   node->declare_parameter("gains.kd.x", -0.2);
   node->declare_parameter("gains.kd.y", -0.2);
   node->declare_parameter("gains.kd.z", -0.2);
 
-  node->declare_parameter("gains.ki.x", 0.1);
-  node->declare_parameter("gains.ki.y", 0.1);
-  node->declare_parameter("gains.ki.z", 0.1);
+  node->declare_parameter("gains.ki.x", 0.2);
+  node->declare_parameter("gains.ki.y", 0.2);
+  node->declare_parameter("gains.ki.z", 0.2);
 
   node->declare_parameter("gains.kp_yaw.x", 0.8);
   node->declare_parameter("gains.kp_yaw.y", 0.8);
@@ -1082,6 +1083,19 @@ int main(int argc, char **argv)
        std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
       (void)request; // unused
       resetTrajectoryServer();
+      response->success = true;
+      response->message = "Trajectory server reset successfully.";
+      return true;
+    });
+
+  reset_controller_service_ = node->create_service<std_srvs::srv::Trigger>(
+    "/ego_traj_server/reset_trajectory_tracking_controller",
+    [](const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+      (void)request; // unused
+      std::lock_guard<std::mutex> lkc(controller_state_mtx);
+      resetTrajectoryTrackingController();
+      cout << "Trajectory tracking controller reset via service call." << endl;
       response->success = true;
       response->message = "Trajectory server reset successfully.";
       return true;

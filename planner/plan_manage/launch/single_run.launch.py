@@ -88,7 +88,7 @@ def generate_launch_description():
             'cy': str(243.44969177246094),
             'fx': str(387.229248046875),
             'fy': str(387.229248046875),
-            'max_vel': str(0.5),
+            'max_vel': str(0.4),
             'max_acc': str(0.2),
             'planning_horizon': str(5.0),
             'use_distinctive_trajs': 'True',

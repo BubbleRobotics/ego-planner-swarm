@@ -47,7 +47,7 @@ rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr heightPub;
 
 rclcpp::Node::SharedPtr node_;
 // tf2_ros::TransformBroadcaster *broadcaster;
-std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster;
+// std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster;
 
 geometry_msgs::msg::PointStamped goalROS;
 geometry_msgs::msg::PoseStamped poseROS;
@@ -456,7 +456,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         transformStamped.transform.rotation.y = transform.getRotation().y();
         transformStamped.transform.rotation.z = transform.getRotation().z();
         transformStamped.transform.rotation.w = transform.getRotation().w();
-        broadcaster->sendTransform(transformStamped);
+        //broadcaster->sendTransform(transformStamped);
 
         // Publish base_s -> laser_s
         transformStamped.header.frame_id = base_s;
@@ -468,11 +468,11 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         transformStamped.transform.rotation.y = transform45.getRotation().y();
         transformStamped.transform.rotation.z = transform45.getRotation().z();
         transformStamped.transform.rotation.w = transform45.getRotation().w();
-        broadcaster->sendTransform(transformStamped);
+        //broadcaster->sendTransform(transformStamped);
 
         // Publish base_s -> vision_s
         transformStamped.child_frame_id = vision_s;
-        broadcaster->sendTransform(transformStamped);
+        //broadcaster->sendTransform(transformStamped);
 
         // Publish base_s -> height_s
         transformStamped.child_frame_id = height_s;
@@ -483,7 +483,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
         transformStamped.transform.rotation.y = transform90.getRotation().y();
         transformStamped.transform.rotation.z = transform90.getRotation().z();
         transformStamped.transform.rotation.w = transform90.getRotation().w();
-        broadcaster->sendTransform(transformStamped);
+        //broadcaster->sendTransform(transformStamped);
     }
 }
 
@@ -609,7 +609,7 @@ int main(int argc, char **argv)
 
     timePub = node->create_publisher<std_msgs::msg::Float64>("time_gap", 100);
     
-    broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(node);
+    // broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(node);
 
     rclcpp::spin(node);
     rclcpp::shutdown();
