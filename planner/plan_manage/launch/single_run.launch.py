@@ -15,9 +15,9 @@ def generate_launch_description():
     obj_num = LaunchConfiguration('obj_num', default=10)
     drone_id = LaunchConfiguration('drone_id', default=0)
     
-    map_size_x = LaunchConfiguration('map_size_x', default = 50.0)
-    map_size_y = LaunchConfiguration('map_size_y', default = 50.0)
-    map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
+    map_size_x = LaunchConfiguration('map_size_x', default = 400.0)
+    map_size_y = LaunchConfiguration('map_size_y', default = 400.0)
+    map_size_z = LaunchConfiguration('map_size_z', default = 30.0)
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     map_reset_timer = LaunchConfiguration('map_reset_timer', default='5.0')

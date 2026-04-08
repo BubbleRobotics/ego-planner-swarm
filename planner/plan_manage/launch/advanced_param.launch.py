@@ -150,7 +150,7 @@ def generate_launch_description():
             {'fsm/waypoint4_y': point4_y},
             {'fsm/waypoint4_z': point4_z},
             {'fsm/point_clicked_z_up': point_clicked_z_up_},
-            {'grid_map/resolution': 0.1},
+            {'grid_map/resolution': 1.0},
             {'grid_map/map_size_x': map_size_x},
             {'grid_map/map_size_y': map_size_y},
             {'grid_map/map_size_z': map_size_z},
