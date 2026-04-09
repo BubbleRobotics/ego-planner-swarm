@@ -1,8 +1,9 @@
 ego_planner_node:
   ros__parameters:
     fsm/thresh_replan_time: 0.5
-    fsm/planning_horizon: 5.0
-    manager/planning_horizon: 5.0
+    fsm/pos_error_threshold: 0.6
+    fsm/planning_horizon: 3.0
+    manager/planning_horizon: 3.0
     manager/max_vel: 0.5
     optimization/max_vel: 0.5
     bspline/limit_vel: 0.5
