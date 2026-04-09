@@ -103,7 +103,7 @@ def generate_launch_description():
         name=['ego_planner_node'],
         output='screen',
         remappings=[
-            ('odom_world', ['odometry/filtered_enu']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2/odometry']
+            ('odom_world', ['odometry/filtered_enu']), # TODO change the remapping of odometry topic Perfect: ['model/bluerov2_heavy/odometry']
             ('planning/bspline', ['ego_planner/bspline']),
             ('planning/data_display', ['ego_planner/data_display']),
             ('planning/broadcast_bspline_from_planner', '/broadcast_bspline'),
@@ -115,7 +115,7 @@ def generate_launch_description():
             ('optimal_list', ['ego_plan_vis/optimal_list']),
             ('a_star_list', ['ego_plan_vis/a_star_list']),
             
-            ('grid_map/odom', ['odometry/filtered_enu']), # TODO change remapping Perfect: ['model/bluerov2/odometry']
+            ('grid_map/odom', ['odometry/filtered_enu']), # TODO change remapping Perfect: ['model/bluerov2_heavy/odometry']
             ('grid_map/cloud', [cloud_topic]), 
             ('grid_map/pose', ['ego_', camera_pose_topic]),
             ('grid_map/depth', ['ego_', depth_topic]),
