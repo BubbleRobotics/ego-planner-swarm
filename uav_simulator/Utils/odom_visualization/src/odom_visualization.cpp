@@ -390,7 +390,7 @@ void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 
 
     colvec ypr = R_to_ypr(quaternion_to_R(q));
-    ypr(2) -= 90.0 * PI / 180.0;
+    ypr(2) += 90.0 * PI / 180.0;
     q = R_to_quaternion(ypr_to_R(ypr));
 
     meshROS.pose.orientation.w = q(0);
