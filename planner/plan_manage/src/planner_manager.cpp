@@ -585,7 +585,7 @@ namespace ego_planner
   }
 
   bool EGOPlannerManager::planGlobalTraj(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel, const Eigen::Vector3d &start_acc,
-                                         const Eigen::Vector3d &end_pos, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc)
+                                         const Eigen::Vector3d &end_pos, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc, const double dt_wp)
   {
 
     // generate global reference trajectory
@@ -630,19 +630,35 @@ namespace ego_planner
 
     Eigen::Vector3d zero(0, 0, 0);
     Eigen::VectorXd time(pt_num - 1);
+
+    if(dt_wp < 0)
+    {
     for (int i = 0; i < pt_num - 1; ++i)
     {
       time(i) = (pos.col(i + 1) - pos.col(i)).norm() / (pp_.max_vel_);
     }
+    }
+    else{
 
-    time(0) *= 2.0;
-    time(time.rows() - 1) *= 2.0;
+      double time_increment = dt_wp / (pt_num - 1);
+      for (int i = 0; i < pt_num - 1; ++i)
+      {
+        time(i) = time_increment;
+      }
+    }
+
+    // time(0) *= 2.0;
+    // time(time.rows() - 1) *= 2.0;
 
     PolynomialTraj gl_traj;
     if (pos.cols() >= 3)
+    {
       gl_traj = PolynomialTraj::minSnapTraj(pos, start_vel, end_vel, start_acc, end_acc, time);
+    }
     else if (pos.cols() == 2)
+    {
       gl_traj = PolynomialTraj::one_segment_traj_gen(start_pos, start_vel, start_acc, end_pos, end_vel, end_acc, time(0));
+    }
     else
       return false;
 

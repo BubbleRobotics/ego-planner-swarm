@@ -135,6 +135,14 @@ namespace ego_planner
           {
             this->waypointCallback(msg);
           });
+
+      velocity_waypoint_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
+        "/ego_planner/move_base_simple/goal_with_velocity",
+        1,
+        [this](const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
+        {
+          this->velocitywaypointCallback(msg);
+        });
     }
     else if (target_type_ == TARGET_TYPE::PRESET_TARGET)
     {
@@ -240,15 +248,15 @@ namespace ego_planner
     planNextWaypoint(wps_[wp_id_]);
   }
 
-  void EGOReplanFSM::planNextWaypoint(const Eigen::Vector3d next_wp)
+  void EGOReplanFSM::planNextWaypoint(const Eigen::Vector3d next_wp, const Eigen::Vector3d next_wp_vel, const double dt_next_wp)
   {
     bool success = false;
     if (planner_manager_->pp_.use_snake_yaw || (exec_state_ == INIT) || (exec_state_ == GEN_NEW_TRAJ)) {
       // While inspecting in snake pattern robot should be still when sending the next waypoint
       // Also, for the first time planning when there is no previous trajectory, we should use odom state to plan to ensure safety.
-      success = planner_manager_->planGlobalTraj(odom_pos_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+      success = planner_manager_->planGlobalTraj(odom_pos_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), next_wp, next_wp_vel, Eigen::Vector3d::Zero());
     } else {
-      success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+      success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, next_wp_vel, Eigen::Vector3d::Zero(), dt_next_wp);
     }
     
     if (success)
@@ -263,7 +271,6 @@ namespace ego_planner
         gloabl_traj[i] = planner_manager_->global_data_.global_traj_.evaluate(i * step_size_t);
       }
 
-      end_vel_.setZero();
       have_target_ = true;
       have_new_target_ = true;
 
@@ -288,7 +295,6 @@ namespace ego_planner
   {
     have_trigger_ = true;
     cout << "Triggered!" << endl;
-    init_pt_ = odom_pos_;
   }
 
   void EGOReplanFSM::waypointCallback(const std::shared_ptr<const geometry_msgs::msg::PoseStamped> &msg)
@@ -301,13 +307,26 @@ namespace ego_planner
 
     cout << "New Waypoint received!" << endl;
 
-    init_pt_ = odom_pos_;
-
     Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
 
     planNextWaypoint(end_wp);
   }
 
+  void EGOReplanFSM::velocitywaypointCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
+  {
+    if (-0.1 < msg->pose.pose.position.z)
+      {
+      cout << "Ignoring waypoint (above water surface level)!" << endl;
+      return;
+      }
+
+    cout << "New Waypoint received!" << endl;
+
+    Eigen::Vector3d end_wp(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
+    Eigen::Vector3d end_vel(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
+    double dt_wp = 5.0; // For now hack (use always 3 s lookahead)
+    planNextWaypoint(end_wp, end_vel, dt_wp);
+  }
 
   void EGOReplanFSM::odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg)
   {
@@ -315,17 +334,21 @@ namespace ego_planner
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
-
-    odom_vel_(0) = msg->twist.twist.linear.x;
-    odom_vel_(1) = msg->twist.twist.linear.y;
-    odom_vel_(2) = msg->twist.twist.linear.z;
-
     // odom_acc_ = estimateAcc( msg );
 
     odom_orient_.w() = msg->pose.pose.orientation.w;
     odom_orient_.x() = msg->pose.pose.orientation.x;
     odom_orient_.y() = msg->pose.pose.orientation.y;
     odom_orient_.z() = msg->pose.pose.orientation.z;
+
+    // Incoming twist.linear is in body frame (Forward, Left, Up)
+    Eigen::Vector3d vel_body;
+    vel_body << msg->twist.twist.linear.x,
+                msg->twist.twist.linear.y,
+                msg->twist.twist.linear.z;
+
+    // Rotate body-frame velocity into odom/map frame (ENU)
+    odom_vel_ = odom_orient_ * vel_body;
 
     have_odom_ = true;
   }
@@ -513,6 +536,7 @@ namespace ego_planner
       bool success = planFromGlobalTraj(10); // zx-todo
       if (success)
       {
+        have_valid_trajectory_ = true;
         changeFSMExecState(EXEC_TRAJ, "FSM");
         flag_escape_emergency_ = true;
         publishSwarmTrajs(false);
@@ -520,6 +544,7 @@ namespace ego_planner
       else
       {
         changeFSMExecState(GEN_NEW_TRAJ, "FSM");
+        have_valid_trajectory_ = false;
       }
       break;
     }
@@ -534,7 +559,7 @@ namespace ego_planner
       }
       else
       {
-        changeFSMExecState(REPLAN_TRAJ, "FSM");
+        changeFSMExecState(GEN_NEW_TRAJ, "FSM");
       }
 
       break;
@@ -669,6 +694,11 @@ namespace ego_planner
     
     auto time_now = node_->get_clock()->now();
     // double t_cur = (time_now - info->start_time_).toSec();
+
+    if (!have_valid_trajectory_){
+      
+      return false;
+    }
 
     double t_cur = (time_now - info->start_time_).seconds();
     start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
@@ -980,7 +1010,7 @@ namespace ego_planner
         break;
       }
     }
-    if (t > planner_manager_->global_data_.global_duration_) // Last global point
+    if (t > planner_manager_->global_data_.global_duration_-t_step) // Last global point
     {
       local_target_pt_ = end_pt_;
       planner_manager_->global_data_.last_progress_time_ = planner_manager_->global_data_.global_duration_;

@@ -88,6 +88,25 @@ void goal_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
     goalPub->publish(goalROS);
 }
 
+void vel_goal_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
+{
+    // Pose
+    colvec pose(6);
+    pose(0) = msg->pose.pose.position.x;
+    pose(1) = msg->pose.pose.position.y;
+    pose(2) = msg->pose.pose.position.z;
+
+    
+    goalROS.header = msg->header;
+    goalROS.header.stamp = msg->header.stamp;
+    goalROS.header.frame_id = string("odom");
+    goalROS.point.x = pose(0);
+    goalROS.point.y = pose(1);
+    goalROS.point.z = pose(2);
+
+    goalPub->publish(goalROS);
+}
+
 void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
     if (msg->header.frame_id == string("null"))
@@ -583,6 +602,8 @@ int main(int argc, char **argv)
         "cmd", 100, cmd_callback);
     auto sub_goal = node->create_subscription<geometry_msgs::msg::PoseStamped>(
         "ego_planner/move_base_simple/goal", 100, goal_callback);
+    auto sub_vel_goal = node->create_subscription<nav_msgs::msg::Odometry>(
+        "ego_planner/move_base_simple/goal_with_velocity", 100, vel_goal_callback);
 
     auto reset_odom_service = node->create_service<std_srvs::srv::Trigger>(
         "/odometry_visualization/reset_odometry_visualization",
