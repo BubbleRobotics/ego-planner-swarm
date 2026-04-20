@@ -207,10 +207,10 @@ namespace ego_planner
   {
     float max_vel = planner_manager_->pp_.max_vel_;
     float max_acc = planner_manager_->pp_.max_acc_;
-    if (request->max_velocity != 0.0){
+    if (request->max_velocity > 0.001){
       max_vel = request->max_velocity;
     }
-    if (request->max_acceleration != 0.0){
+    if (request->max_acceleration > 0.001){
       max_acc = request->max_acceleration;
     }
     planner_manager_->setMaxVelAcc(max_vel, max_acc);
@@ -1019,10 +1019,12 @@ namespace ego_planner
     if ((end_pt_ - local_target_pt_).norm() < (planner_manager_->pp_.max_vel_ * planner_manager_->pp_.max_vel_) / (2 * planner_manager_->pp_.max_acc_))
     {
       local_target_vel_ = Eigen::Vector3d::Zero();
+      // cout << "Close to goal, using target_velocity 0!" << endl;
     }
     else
     {
       local_target_vel_ = planner_manager_->global_data_.getVelocity(t);
+      // cout << "Normal operation, using target_velocity" << local_target_vel_ << endl;
     }
   }
 

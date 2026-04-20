@@ -631,11 +631,15 @@ namespace ego_planner
     Eigen::Vector3d zero(0, 0, 0);
     Eigen::VectorXd time(pt_num - 1);
 
-    if(dt_wp < 0)
+    if(dt_wp <= 0)
     {
     for (int i = 0; i < pt_num - 1; ++i)
     {
       time(i) = (pos.col(i + 1) - pos.col(i)).norm() / (pp_.max_vel_);
+    }
+    if (pt_num > 2){
+      time(0) *= 2.0;
+      time(time.rows() - 1) *= 2.0;
     }
     }
     else{
@@ -647,8 +651,7 @@ namespace ego_planner
       }
     }
 
-    // time(0) *= 2.0;
-    // time(time.rows() - 1) *= 2.0;
+  
 
     PolynomialTraj gl_traj;
     if (pos.cols() >= 3)
