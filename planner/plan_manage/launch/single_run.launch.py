@@ -14,7 +14,9 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default=False)
     obj_num = LaunchConfiguration('obj_num', default=10)
     drone_id = LaunchConfiguration('drone_id', default=0)
-    
+    max_vel = LaunchConfiguration('max_vel', default=0.4)
+    max_acc = LaunchConfiguration('max_acc', default=0.2)
+
     map_size_x = LaunchConfiguration('map_size_x', default = 50.0)
     map_size_y = LaunchConfiguration('map_size_y', default = 50.0)
     map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
@@ -26,7 +28,9 @@ def generate_launch_description():
     use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
     drone_id_cmd = DeclareLaunchArgument('drone_id', default_value=drone_id, description='Drone ID')
-    
+    max_vel_cmd = DeclareLaunchArgument('max_vel', default_value=max_vel, description='Maximum velocity')
+    max_acc_cmd = DeclareLaunchArgument('max_acc', default_value=max_acc, description='Maximum acceleration')
+
     map_size_x_cmd = DeclareLaunchArgument('map_size_x', default_value=map_size_x, description='Map size along x')
     map_size_y_cmd = DeclareLaunchArgument('map_size_y', default_value=map_size_y, description='Map size along y')
     map_size_z_cmd = DeclareLaunchArgument('map_size_z', default_value=map_size_z, description='Map size along z')
@@ -88,8 +92,8 @@ def generate_launch_description():
             'cy': str(243.44969177246094),
             'fx': str(387.229248046875),
             'fy': str(387.229248046875),
-            'max_vel': str(0.4),
-            'max_acc': str(0.2),
+            'max_vel': max_vel,
+            'max_acc': max_acc,
             'planning_horizon': str(5.0),
             'use_distinctive_trajs': 'True',
             'flight_type': str(1),
@@ -181,6 +185,8 @@ def generate_launch_description():
     ld.add_action(odom_topic_cmd)
     ld.add_action(obj_num_cmd)
     ld.add_action(drone_id_cmd)
+    ld.add_action(max_vel_cmd)
+    ld.add_action(max_acc_cmd)
     ld.add_action(use_dynamic_cmd)
     ld.add_action(use_mockamap_cmd)
     ld.add_action(map_reset_timer_cmd)

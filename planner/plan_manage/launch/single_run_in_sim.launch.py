@@ -17,8 +17,8 @@ def generate_launch_description():
     max_vel = LaunchConfiguration('max_vel', default=0.4)
     max_acc = LaunchConfiguration('max_acc', default=0.2)
 
-    map_size_x = LaunchConfiguration('map_size_x', default = 40.0)
-    map_size_y = LaunchConfiguration('map_size_y', default = 40.0)
+    map_size_x = LaunchConfiguration('map_size_x', default = 50.0)
+    map_size_y = LaunchConfiguration('map_size_y', default = 50.0)
     map_size_z = LaunchConfiguration('map_size_z', default = 13.0)
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
