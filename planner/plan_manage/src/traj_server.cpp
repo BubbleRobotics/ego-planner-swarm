@@ -913,13 +913,13 @@ void cmdCallback()
 
     v_cmd_world = v_des
                 + Kp.cwiseProduct(p_error)
-                - Kd.cwiseProduct(v_meas)
+                + Kd.cwiseProduct(v_des - v_meas)
                 + Ki.cwiseProduct(integrated_error_);
 
     w_cmd_world = w_des;
     w_cmd_world(2) = w_des(2)
                    + Kp_yaw(2) * yaw_err
-                   - Kd_yaw(2) * w_meas(2)
+                   + Kd_yaw(2) * (w_des(2)-w_meas(2))
                    + Ki_yaw(2) * integrated_yaw_error_;
 
     last_last_p_error_ = last_p_error_;
@@ -985,9 +985,9 @@ int main(int argc, char **argv)
   node->declare_parameter("gains.kp.y", 0.8);
   node->declare_parameter("gains.kp.z", 0.8);
 
-  node->declare_parameter("gains.kd.x", -0.2);
-  node->declare_parameter("gains.kd.y", -0.2);
-  node->declare_parameter("gains.kd.z", -0.2);
+  node->declare_parameter("gains.kd.x", 0.2);
+  node->declare_parameter("gains.kd.y", 0.2);
+  node->declare_parameter("gains.kd.z", 0.2);
 
   node->declare_parameter("gains.ki.x", 0.2);
   node->declare_parameter("gains.ki.y", 0.2);
@@ -999,7 +999,7 @@ int main(int argc, char **argv)
 
   node->declare_parameter("gains.kd_yaw.x", 0.1);
   node->declare_parameter("gains.kd_yaw.y", 0.1);
-  node->declare_parameter("gains.kd_yaw.z", -0.2);
+  node->declare_parameter("gains.kd_yaw.z", 0.2);
 
   node->declare_parameter("gains.ki_yaw.x", 0.1);
   node->declare_parameter("gains.ki_yaw.y", 0.1);

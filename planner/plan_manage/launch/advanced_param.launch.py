@@ -182,7 +182,7 @@ def generate_launch_description():
             {'grid_map/max_ray_length': 4.5},
             
             {'grid_map/visualization_truncate_height': 0.1},
-            {'grid_map/occ_ttl_sec"': map_reset_timer},
+            {'grid_map/occ_ttl_sec': map_reset_timer},
             {'grid_map/pose_type': 1},
             {'grid_map/frame_id': "odom"},
             {'grid_map/point_cloud_target_frame': "odom"},

@@ -23,7 +23,7 @@ def generate_launch_description():
     odom_topic = LaunchConfiguration('odom_topic', default = 'odometry')
     point_clicked_z_up_ = LaunchConfiguration('point_clicked_z_up', default=-1.0)
     map_reset_timer = LaunchConfiguration('grid_map/occ_ttl_sec', default='5.0')
-    obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.05')
+    obstacle_inflation = LaunchConfiguration('obstacles_inflation', default='0.2')
     # Declare global parameters
     use_sim_time_cmd = DeclareLaunchArgument('use_sim_time',default_value=use_sim_time, description='Using simulation / ROS time')
     obj_num_cmd = DeclareLaunchArgument('obj_num', default_value=obj_num, description='Number of objects')
@@ -86,7 +86,7 @@ def generate_launch_description():
             
             'camera_pose_topic': 'pcl_render_node/camera_pose',
             'depth_topic': 'pcl_render_node/depth',
-            'cloud_topic': 'camera_d455/depth/image_raw/points',
+            'cloud_topic': '/stereo/point_cloud',#'camera_d455/depth/image_raw/points',
             
             'cx': str(321.04638671875),
             'cy': str(243.44969177246094),
