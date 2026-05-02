@@ -92,6 +92,8 @@ namespace ego_planner
         std::placeholders::_1, std::placeholders::_2)
       );
     reset_traj_controller_client_ = node_->create_client<std_srvs::srv::Trigger>("ego_traj_server/reset_trajectory_tracking_controller");
+    local_target_marker_pub_ = node_->create_publisher<visualization_msgs::msg::Marker>(
+              "planning/local_target_marker", 10);
 
     // std::bind(&EGOReplanFSM::odometryCallback, this, std::placeholders::_1));
 
@@ -250,10 +252,15 @@ namespace ego_planner
 
   void EGOReplanFSM::planNextWaypoint(const Eigen::Vector3d next_wp, const Eigen::Vector3d next_wp_vel, const double dt_next_wp)
   {
+    if (!have_odom_ || exec_state_ == EMERGENCY_STOP || exec_state_ == INIT)
+    {
+        RCLCPP_WARN(node_->get_logger(), "Ignoring waypoint, unsafe state.");
+        return;
+    }
     bool success = false;
-    if (planner_manager_->pp_.use_snake_yaw || (exec_state_ == INIT) || (exec_state_ == GEN_NEW_TRAJ)) {
+    if (planner_manager_->pp_.use_straight_line_planner || (exec_state_ == GEN_NEW_TRAJ)) {
       // While inspecting in snake pattern robot should be still when sending the next waypoint
-      // Also, for the first time planning when there is no previous trajectory, we should use odom state to plan to ensure safety.
+      // Also, for the first time planning when there is no previous trajectory, we should not use odom state to plan to ensure safety.
       success = planner_manager_->planGlobalTraj(odom_pos_, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), next_wp, next_wp_vel, Eigen::Vector3d::Zero());
     } else {
       success = planner_manager_->planGlobalTraj(odom_pos_, odom_vel_, Eigen::Vector3d::Zero(), next_wp, next_wp_vel, Eigen::Vector3d::Zero(), dt_next_wp);
@@ -262,6 +269,7 @@ namespace ego_planner
     if (success)
     {
       end_pt_ = next_wp;
+      end_vel_ = next_wp_vel;
 
       constexpr double step_size_t = 0.1;
       int i_end = floor(planner_manager_->global_data_.global_duration_ / step_size_t);
@@ -274,14 +282,11 @@ namespace ego_planner
       have_target_ = true;
       have_new_target_ = true;
 
-      /*** FSM state transition ***/
       if (exec_state_ == WAIT_TARGET)
-        changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
+          changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
       else
-      {
-        
         changeFSMExecState(REPLAN_TRAJ, "TRIG");
-      }
+      
       
       visualization_->displayGlobalPathList(gloabl_traj, 0.1, 0);
     }
@@ -324,7 +329,7 @@ namespace ego_planner
 
     Eigen::Vector3d end_wp(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
     Eigen::Vector3d end_vel(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
-    double dt_wp = 5.0; // For now hack (use always 3 s lookahead)
+    double dt_wp = 5.0; // For now hack (use always 5 s lookahead)
     planNextWaypoint(end_wp, end_vel, dt_wp);
   }
 
@@ -445,7 +450,7 @@ namespace ego_planner
     else
       continously_called_times_ = 1;
 
-    static string state_str[8] = {"INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ", "EMERGENCY_STOP", "SEQUENTIAL_START"};
+    static string state_str[8] = {"INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ", "EMERGENCY_STOP"};
     int pre_s = int(exec_state_);
     exec_state_ = new_state;
     cout << "[" + pos_call + "]: from " + state_str[pre_s] + " to " + state_str[int(new_state)] << endl;
@@ -458,7 +463,7 @@ namespace ego_planner
 
   void EGOReplanFSM::printFSMExecState()
   {
-    static string state_str[8] = {"INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ", "EMERGENCY_STOP", "SEQUENTIAL_START"};
+    static string state_str[8] = {"INIT", "WAIT_TARGET", "GEN_NEW_TRAJ", "REPLAN_TRAJ", "EXEC_TRAJ", "EMERGENCY_STOP"};
 
     cout << "[FSM]: state: " + state_str[int(exec_state_)] << endl;
   }
@@ -497,36 +502,8 @@ namespace ego_planner
         goto force_return;
       else
       {
-        changeFSMExecState(SEQUENTIAL_START, "FSM");
+        changeFSMExecState(GEN_NEW_TRAJ, "FSM");
       }
-      break;
-    }
-
-    case SEQUENTIAL_START: // for swarm
-    {
-      if (planner_manager_->pp_.drone_id <= 0 || (planner_manager_->pp_.drone_id >= 1 && have_recv_pre_agent_))
-      {
-        if (have_odom_ && have_target_ && have_trigger_)
-        {
-          bool success = planFromGlobalTraj(10); // zx-todo
-          if (success)
-          {
-            changeFSMExecState(EXEC_TRAJ, "FSM");
-
-            publishSwarmTrajs(true);
-          }
-          else
-          {
-            RCLCPP_ERROR(node_->get_logger(), "Failed to generate the first trajectory!!!");
-            changeFSMExecState(SEQUENTIAL_START, "FSM");
-          }
-        }
-        else
-        {
-          RCLCPP_ERROR(node_->get_logger(), "No odom or no target! have_odom_=%d, have_target_=%d", have_odom_, have_target_);
-        }
-      }
-
       break;
     }
 
@@ -667,7 +644,7 @@ namespace ego_planner
   bool EGOReplanFSM::planFromGlobalTraj(const int trial_times /*=1*/) // zx-todo
   {
     start_pt_ = odom_pos_;
-    start_vel_.setZero(); // TODO check if this fixed inital crazy movement issues
+    start_vel_.setZero();
     start_acc_.setZero();
 
     bool flag_random_poly_init;
@@ -799,11 +776,11 @@ namespace ego_planner
           break;
         }
       }
-
+      
       if (occ)
       {
 
-        if (planFromCurrentTraj()) // Make a chance
+        if (planFromCurrentTraj()) // Make a change
         {
           changeFSMExecState(EXEC_TRAJ, "SAFETY");
           publishSwarmTrajs(false);
@@ -833,7 +810,26 @@ namespace ego_planner
   {
 
     getLocalTarget();
-
+    // Publish local target marker for visualization
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "odom";
+    marker.header.stamp = node_->get_clock()->now();
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = local_target_pt_(0);
+    marker.pose.position.y = local_target_pt_(1);
+    marker.pose.position.z = local_target_pt_(2);
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.2;
+    marker.scale.y = 0.2;
+    marker.scale.z = 0.2;
+    marker.color.r = 1.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0f;
+    local_target_marker_pub_->publish(marker);
+    cout << "LOCAL TARGET \n" << local_target_pt_ << " \nVEL \n" << local_target_vel_ << endl;
     bool plan_and_refine_success =
         planner_manager_->reboundReplan(start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_, (have_new_target_ || flag_use_poly_init), flag_randomPolyTraj);
     have_new_target_ = false;
@@ -1006,6 +1002,7 @@ namespace ego_planner
       if (dist >= planning_horizen_)
       {
         local_target_pt_ = pos_t;
+        local_target_vel_ = planner_manager_->global_data_.getVelocity(t);
         planner_manager_->global_data_.last_progress_time_ = dist_min_t;
         break;
       }
@@ -1013,18 +1010,8 @@ namespace ego_planner
     if (t > planner_manager_->global_data_.global_duration_-t_step) // Last global point
     {
       local_target_pt_ = end_pt_;
+      local_target_vel_ = end_vel_;
       planner_manager_->global_data_.last_progress_time_ = planner_manager_->global_data_.global_duration_;
-    }
-
-    if ((end_pt_ - local_target_pt_).norm() < (planner_manager_->pp_.max_vel_ * planner_manager_->pp_.max_vel_) / (2 * planner_manager_->pp_.max_acc_))
-    {
-      local_target_vel_ = Eigen::Vector3d::Zero();
-      // cout << "Close to goal, using target_velocity 0!" << endl;
-    }
-    else
-    {
-      local_target_vel_ = planner_manager_->global_data_.getVelocity(t);
-      // cout << "Normal operation, using target_velocity" << local_target_vel_ << endl;
     }
   }
 

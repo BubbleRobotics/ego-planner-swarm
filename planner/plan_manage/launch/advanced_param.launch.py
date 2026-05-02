@@ -173,7 +173,7 @@ def generate_launch_description():
             {'grid_map/k_depth_scaling_factor': 1000.0},
             {'grid_map/skip_pixel': 2},
             # local fusion
-            {'grid_map/p_hit': 0.65},
+            {'grid_map/p_hit': 0.7},
             {'grid_map/p_miss': 0.35},
             {'grid_map/p_min': 0.12},
             {'grid_map/p_max': 0.90},

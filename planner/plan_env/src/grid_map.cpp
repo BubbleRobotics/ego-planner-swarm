@@ -97,6 +97,8 @@ void GridMap::initMap(rclcpp::Node::SharedPtr node)
   cout << "min log: " << mp_.clamp_min_log_ << endl;
   cout << "max: " << mp_.clamp_max_log_ << endl;
   cout << "thresh log: " << mp_.min_occupancy_log_ << endl;
+  cout << "initial occupancy buffer value: " << mp_.clamp_min_log_ - mp_.unknown_flag_ << endl;
+  cout << "Hits until occupied: " << (mp_.min_occupancy_log_ - (mp_.clamp_min_log_ - mp_.unknown_flag_))/mp_.prob_hit_log_ << endl;
 
   for (int i = 0; i < 3; ++i)
     mp_.map_voxel_num_(i) = ceil(mp_.map_size_(i) / mp_.resolution_);
@@ -411,6 +413,7 @@ void GridMap::projectDepthImage()
 
 void GridMap::expireOccupiedVoxels(float ttl_sec)
 {
+  // auto start_time_resetting_ = std::chrono::steady_clock::now();
   const float now_s = static_cast<float>(node_->now().seconds());
   
   // Only check voxels in the local update range around the camera, to save time. 
@@ -424,6 +427,7 @@ void GridMap::expireOccupiedVoxels(float ttl_sec)
   boundIndex(min_id);
   boundIndex(max_id);
   // Loop through voxels in the local update range and clear those that are occupied but haven't been observed for longer than ttl_sec.
+  
   for (int x = min_id(0); x <= max_id(0); ++x)
     for (int y = min_id(1); y <= max_id(1); ++y)
       for (int z = min_id(2); z <= max_id(2); ++z)
@@ -431,7 +435,7 @@ void GridMap::expireOccupiedVoxels(float ttl_sec)
         int idx = toAddress(x, y, z);
 
         // if base voxel is occupied but too old -> clear it
-        if (md_.occupancy_buffer_[idx] > mp_.min_occupancy_log_)
+        if (md_.occupancy_buffer_[idx] > mp_.clamp_min_log_)
         {
           if ((now_s - md_.occ_last_seen_[idx]) > ttl_sec)
           {
@@ -440,6 +444,9 @@ void GridMap::expireOccupiedVoxels(float ttl_sec)
           }
         }
       }
+  // auto end_time_resetting_ = std::chrono::steady_clock::now();
+  // auto duration_resetting = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_resetting_ - start_time_resetting_).count();
+  // std::cout << "Expire occupied voxels time: " << duration_resetting << " ms" << std::endl;
 }
 
 
@@ -699,6 +706,7 @@ void GridMap::clearAndInflateLocalMap()
   // inflate occupied voxels to compensate robot size
 
   int inf_step = ceil(mp_.obstacles_inflation_ / mp_.resolution_);
+  // scout << "Inflation to account for robot is: " << inf_step*mp_.resolution_ << endl;
   // int inf_step_z = 1;
   vector<Eigen::Vector3i> inf_pts(pow(2 * inf_step + 1, 3));
   // inf_pts.resize(4 * inf_step + 3);
@@ -759,10 +767,9 @@ void GridMap::updateOccupancyCallback()
   // Once we have cloud, start with expiring old occupied voxels to clear the map.
   // Even if we don't have new depth images or odometry, we still want to clear old occupied voxels based on their last seen time.
   expireOccupiedVoxels(static_cast<float>(mp_.occ_ttl_sec_));
-  if (md_.local_updated_)
-  {
-    clearAndInflateLocalMap();
-  }
+
+  clearAndInflateLocalMap();
+  
   
   if (md_.flag_use_depth_fusion &&
       (node_->now() - md_.last_occ_update_time_).seconds() > mp_.odom_depth_timeout_)

@@ -22,7 +22,7 @@ namespace ego_planner
     node_->declare_parameter("manager/planning_horizon", 5.0);
     node_->declare_parameter("manager/use_distinctive_trajs", false);
     node_->declare_parameter("manager/drone_id", -1);
-    node_->declare_parameter("manager/use_snake_yaw", false);
+    node_->declare_parameter("manager/use_straight_line_planner", false);
 
     node_->get_parameter("manager/max_vel", pp_.max_vel_);
     node_->get_parameter("manager/max_acc", pp_.max_acc_);
@@ -32,7 +32,7 @@ namespace ego_planner
     node_->get_parameter("manager/planning_horizon", pp_.planning_horizen_);
     node_->get_parameter("manager/use_distinctive_trajs", pp_.use_distinctive_trajs);
     node_->get_parameter("manager/drone_id", pp_.drone_id);
-    node_->get_parameter("manager/use_snake_yaw", pp_.use_snake_yaw);
+    node_->get_parameter("manager/use_straight_line_planner", pp_.use_straight_line_planner);
 
     local_data_.traj_id_ = 0;
     grid_map_.reset(new GridMap);
@@ -69,7 +69,7 @@ namespace ego_planner
 
   void EGOPlannerManager::snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg)
   {
-    pp_.use_snake_yaw = msg->use_snake_yaw;
+    pp_.use_straight_line_planner = msg->use_snake_yaw;
   }
 
 
@@ -90,7 +90,7 @@ namespace ego_planner
 
     bspline_optimizer_->setLocalTargetPt(local_target_pt);
 
-    if (pp_.use_snake_yaw)
+    if (pp_.use_straight_line_planner)
     {
       if (tryStraightLinePlan(start_pt, start_vel, start_acc, local_target_pt, local_target_vel))
       {
@@ -241,7 +241,10 @@ namespace ego_planner
           bool use_tail = false;
           PolynomialTraj tail_traj;
 
-          if (tail_dist > 1e-4)
+          // If the end of the previous trajectory is far enough from the new local target,
+          // generate a "tail" trajectory from the end of the previous trajectory to the new local target, 
+          // and use it as a warm start for the B-spline parameterization.
+          if (tail_dist > pp_.ctrl_pt_dist) 
           {
             // compute the trail time based on the average of the end velocity of the previous traj and the local target velocity, 
             // with a lower bound to ensure it's not 0 (protect against division by 0).
@@ -631,6 +634,9 @@ namespace ego_planner
     Eigen::Vector3d zero(0, 0, 0);
     Eigen::VectorXd time(pt_num - 1);
 
+    // If no specific time interval is given for the waypoints, 
+    // calculate the time based on the existing EGO-planner logic at maximum velocity; 
+    // otherwise, use the given time interval to compute the time for each segment.
     if(dt_wp <= 0)
     {
     for (int i = 0; i < pt_num - 1; ++i)

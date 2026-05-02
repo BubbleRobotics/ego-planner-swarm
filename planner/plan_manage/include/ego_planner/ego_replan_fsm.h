@@ -43,7 +43,6 @@ namespace ego_planner
       REPLAN_TRAJ,
       EXEC_TRAJ,
       EMERGENCY_STOP,
-      SEQUENTIAL_START
     };
     enum TARGET_TYPE
     {
@@ -79,7 +78,7 @@ namespace ego_planner
 
 
     Eigen::Vector3d start_pt_, start_vel_, start_acc_, start_yaw_; // start state
-    Eigen::Vector3d end_pt_;                                       // goal state
+    Eigen::Vector3d end_pt_, end_vel_;                                       // goal state
     Eigen::Vector3d local_target_pt_, local_target_vel_;                     // local target state
     std::vector<Eigen::Vector3d> wps_;
     int current_wp_;
@@ -103,7 +102,8 @@ namespace ego_planner
     rclcpp::Publisher<traj_utils::msg::DataDisp>::SharedPtr data_disp_pub_;
     rclcpp::Publisher<traj_utils::msg::MultiBsplines>::SharedPtr swarm_trajs_pub_;
     rclcpp::Publisher<traj_utils::msg::Bspline>::SharedPtr broadcast_bspline_pub_;
-
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr local_target_marker_pub_;
+    
     rclcpp::Service<traj_utils::srv::VelAccCmd>::SharedPtr set_velocity_acceleration_service_;
     rclcpp::Service<traj_utils::srv::SetErrorThreshold>::SharedPtr set_error_threshold_service_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_ego_state_service_;
@@ -140,7 +140,7 @@ namespace ego_planner
     void odometryCallback(const std::shared_ptr<const nav_msgs::msg::Odometry> &msg);
     void pointClickedCallback(const std::shared_ptr<const geometry_msgs::msg::PointStamped> &msg);
     void swarmTrajsCallback(const std::shared_ptr<const traj_utils::msg::MultiBsplines> &msg);
-
+    
     void publishSwarmTrajs(bool startup_pub);
 
   public:
