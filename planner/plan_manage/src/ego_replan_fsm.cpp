@@ -1004,10 +1004,20 @@ namespace ego_planner
         local_target_pt_ = pos_t;
         local_target_vel_ = planner_manager_->global_data_.getVelocity(t);
         planner_manager_->global_data_.last_progress_time_ = dist_min_t;
+        
+      
+        // DEBUG: show what the global traj thinks velocity should be here
+        // RCLCPP_INFO(node_->get_logger(),
+        //     "[getLocalTarget] t=%.3f dist=%.3f "
+        //     "global_vel=(%.2f, %.2f, %.2f) |v|=%.3f",
+        //     t, dist,
+        //     local_target_vel_.x(), local_target_vel_.y(), local_target_vel_.z(),
+        //     local_target_vel_.norm());
+        
         break;
       }
     }
-    if (t > planner_manager_->global_data_.global_duration_-t_step) // Last global point
+    if (t > planner_manager_->global_data_.global_duration_)
     {
       local_target_pt_ = end_pt_;
       local_target_vel_ = end_vel_;

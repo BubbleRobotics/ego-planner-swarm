@@ -51,6 +51,8 @@ namespace ego_planner
     "planning/snake_yaw",
     10,
     std::bind(&EGOPlannerManager::snakeyawCallback, this, std::placeholders::_1));
+    ctrl_pts_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "planning/ctrl_pts_debug", 10);
 
   }
   
@@ -81,7 +83,7 @@ namespace ego_planner
     static int count = 0;
     printf("\033[47;30m\n[drone %d replan %d]==============================================\033[0m\n", pp_.drone_id, count++);
 
-    if ((start_pt - local_target_pt).norm() < 0.2)
+    if ((start_pt - local_target_pt).norm() < 0.05)
     {
       cout << "Close to goal" << endl;
       continous_failures_count_++;
@@ -89,6 +91,7 @@ namespace ego_planner
     }
 
     bspline_optimizer_->setLocalTargetPt(local_target_pt);
+
 
     if (pp_.use_straight_line_planner)
     {
@@ -100,7 +103,6 @@ namespace ego_planner
       std::cout << "[EGOPlannerManager] straight-line blocked/infeasible, fallback to rebound.\n";
     }
 
-
     rclcpp::Time t_start = rclcpp::Clock().now();
     rclcpp::Duration t_init(0, 0), t_opt(0, 0), t_refine(0, 0);
 
@@ -108,6 +110,14 @@ namespace ego_planner
     Calculate the first time step ts based on the distance between the start and target points; if the vector magnitude is greater than 0.1 use 1.5×, otherwise 5×.
     ***/
     double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.5 : pp_.ctrl_pt_dist / pp_.max_vel_ * 5.0; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
+    if ((start_pt - local_target_pt).norm() > 0.1){
+      cout << "Initial ts based on distance: " << ts << " (distance: " << (start_pt - local_target_pt).norm() << ")\n";
+    }
+    else
+    {
+      cout << "Initial ts based on distance: " << ts << " (distance: " << (start_pt - local_target_pt).norm() << ")\n";
+    }
+    
     // std::cout << "Initial ts: " << ts << "and dist:" << (start_pt - local_target_pt).norm() << std::endl;
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
     static bool flag_first_call = true, flag_force_polynomial = false;
@@ -123,15 +133,52 @@ namespace ego_planner
       // If we enter the else-branch, abnormal situations may set flag_regenerate to true, causing the do-block to run again.
       if (flag_first_call || flag_polyInit || flag_force_polynomial /*|| ( start_pt - local_target_pt ).norm() < 1.0*/) // Initial path generated from a min-snap traj by order.
       {
-        //std::cout << "Initial path generated from polynomial trajectory." << flag_first_call << flag_polyInit << flag_force_polynomial << std::endl;
         flag_first_call = false;
         flag_force_polynomial = false;
         // Used to store the generated trajectory
         PolynomialTraj gl_traj;
 
+        // Trapezoidal time estimate assuming zero start/end velocity
         double dist = (start_pt - local_target_pt).norm();
         // Check whether (velocity^2 / acceleration) is greater than dist and decide how to compute the time
-        double time = pow(pp_.max_vel_, 2) / pp_.max_acc_ > dist ? sqrt(dist / pp_.max_acc_) : (dist - pow(pp_.max_vel_, 2) / pp_.max_acc_) / pp_.max_vel_ + 2 * pp_.max_vel_ / pp_.max_acc_;
+        //double time = pow(pp_.max_vel_, 2) / pp_.max_acc_ > dist ? sqrt(dist / pp_.max_acc_) : (dist - pow(pp_.max_vel_, 2) / pp_.max_acc_) / pp_.max_vel_ + 2 * pp_.max_vel_ / pp_.max_acc_;
+        // double v_max = std::max(pp_.max_vel_, 1e-6);
+        // double a_max = std::max(pp_.max_acc_, 1e-6);
+        // double d0 = 0.8;  // tune: 0.5 .. 2.0 m
+
+        // double d_acc = v_max * v_max / a_max;
+        // double d_soft = std::max(0.0, dist) + d0;
+
+        // double time_raw;
+        // if (d_soft <= d_acc) {
+        //   time_raw = 2.0 * std::sqrt(d_soft / a_max);
+        // } else {
+        //   time_raw = 2.0 * v_max / a_max + (d_soft - d_acc) / v_max;
+        // }
+
+        // double time_offset;
+        // if (d0 <= d_acc) {
+        //   time_offset = 2.0 * std::sqrt(d0 / a_max);
+        // } else {
+        //   time_offset = 2.0 * v_max / a_max + (d0 - d_acc) / v_max;
+        // }
+
+        // double time = time_raw - time_offset;
+        double v_max = std::max(pp_.max_vel_, 1e-6);
+        double a_max = std::max(pp_.max_acc_, 1e-6);
+        double d_acc = v_max * v_max / a_max;
+
+        double time;
+        if (dist <= d_acc) {
+          time = 2.0 * std::sqrt(dist / a_max);
+          cout << "Case 1: accel-limited, time=" << time << endl;
+          cout << "DISTANCE: " << dist << ", d_acc: " << d_acc << endl;
+        } else {
+          time = 2.0 * v_max / a_max + (dist - d_acc) / v_max;
+          cout << "case 2: vel-limited, time=" << time << endl;
+          cout << "DISTANCE: " << dist << ", d_acc: " << d_acc << endl;
+        }
+        
         // double time_straight_line = dist / pp_.max_vel_;
         // // cout << "Initial polynomial traj generation: dist=" << dist << ", time=" << time << endl;
 
@@ -141,7 +188,6 @@ namespace ego_planner
         // cout << "Local target vel: " << local_target_vel.transpose() << endl;
 
         if (!flag_randomPolyTraj)
-        // false → generate a single polynomial segment, true → generate a trajectory with random inserted points
         {
           gl_traj = PolynomialTraj::one_segment_traj_gen(start_pt, start_vel, start_acc, local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), time);
         }
@@ -151,11 +197,11 @@ namespace ego_planner
           Eigen::Vector3d horizen_dir = ((start_pt - local_target_pt).cross(Eigen::Vector3d(0, 0, 1))).normalized();
           Eigen::Vector3d vertical_dir = ((start_pt - local_target_pt).cross(horizen_dir)).normalized();
           Eigen::Vector3d random_inserted_pt = mid_point;
-          // only start to add randomness when the straight line connection fails, randomness should help escape from local minima
-          if (continous_failures_count_ > 0){
-                random_inserted_pt = (start_pt + local_target_pt) / 2 +
-                                               (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * horizen_dir * 0.8 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989) +
-                                               (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * vertical_dir * 0.4 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989);
+          if (continous_failures_count_ > 0)
+          {
+            random_inserted_pt = (start_pt + local_target_pt) / 2 +
+                                 (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * horizen_dir * 0.8 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989) +
+                                 (((double)rand()) / RAND_MAX - 0.5) * (start_pt - local_target_pt).norm() * vertical_dir * 0.4 * (-0.978 / (continous_failures_count_ + 0.989) + 0.989);
           }
           Eigen::MatrixXd pos(3, 3);
           pos.col(0) = start_pt;
@@ -166,10 +212,12 @@ namespace ego_planner
           gl_traj = PolynomialTraj::minSnapTraj(pos, start_vel, local_target_vel, start_acc, Eigen::Vector3d::Zero(), t);
         }
 
-        // Given the initial trajectory, sample points along it that will be used as control points for the B-spline optimization.
+        // Sample points along the polynomial for B-spline control points.
+        // ts is scaled up first so the inner loop immediately divides it back down,
+        // then keeps halving until spacing is tight enough and we have >= 7 points.
         double t;
         bool flag_too_far;
-        ts *= 1.5; // ts will be divided by 1.5 in the next
+        ts *= 1.5;
         do
         {
           ts /= 1.5;
@@ -179,7 +227,7 @@ namespace ego_planner
           for (t = 0; t < time; t += ts)
           {
             Eigen::Vector3d pt = gl_traj.evaluate(t);
-            if ((last_pt - pt).norm() > pp_.ctrl_pt_dist * 1.5) // If distance between consecutive points is too large, trajectory is too agressive, regenerate with smaller sampling time step.
+            if ((last_pt - pt).norm() > pp_.ctrl_pt_dist * 1.5)
             {
               flag_too_far = true;
               break;
@@ -187,17 +235,8 @@ namespace ego_planner
             last_pt = pt;
             point_set.push_back(pt);
           }
-          
-        } while (flag_too_far || point_set.size() < 7); // To make sure the initial path has enough points.
+        } while (flag_too_far || point_set.size() < 7);
 
-        // Enure that last point is close enough to the target point 
-        if ((point_set.back() - local_target_pt).norm() > 1e-4)
-        {
-          cout << "Warning: last point of initial trajectory is not close to the target, add target as the last point. dist=" << (point_set.back() - local_target_pt).norm() << endl;
-          point_set.push_back(local_target_pt);
-        }
-
-        // Use the true end time for derivatives
         start_end_derivatives.push_back(start_vel);
         start_end_derivatives.push_back(local_target_vel);
         start_end_derivatives.push_back(start_acc);
@@ -205,135 +244,116 @@ namespace ego_planner
       }
       else // Initial path generated from previous trajectory.
       {
+        double t;
         double t_cur = (node_->get_clock()->now() - local_data_.start_time_).seconds();
-        t_cur = std::max(0.0, std::min(t_cur, local_data_.duration_));
 
-        point_set.clear();
-
-        bool used_prev_traj = false;
-        int outer_iter = 0;
-
-        const double ts_nominal = ts;
-
-        do
+        vector<double> pseudo_arc_length;
+        vector<Eigen::Vector3d> segment_point;
+        pseudo_arc_length.push_back(0.0);
+        for (t = t_cur; t < local_data_.duration_ + 1e-3; t += ts)
         {
-          if (++outer_iter > 30)
+          segment_point.push_back(local_data_.position_traj_.evaluateDeBoorT(t));
+          if (t > t_cur)
           {
-            std::cout << "Time-resampling loop did not converge, break.\n";
-            point_set.clear();
-            break;
+            pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
           }
+        }
+        t -= ts;
 
-          point_set.clear();
-
-          const double old_remain_time = std::max(0.0, local_data_.duration_ - t_cur);
-
-          const Eigen::Vector3d old_end_pt =
-              local_data_.position_traj_.evaluateDeBoorT(local_data_.duration_);
-          const Eigen::Vector3d old_end_vel =
-              local_data_.velocity_traj_.evaluateDeBoorT(local_data_.duration_);
-          const Eigen::Vector3d old_end_acc =
-              local_data_.acceleration_traj_.evaluateDeBoorT(local_data_.duration_);
-
-
-          double tail_dist = (old_end_pt - local_target_pt).norm();
-          double tail_time = 0.0;
-          bool use_tail = false;
-          PolynomialTraj tail_traj;
-
-          // If the end of the previous trajectory is far enough from the new local target,
-          // generate a "tail" trajectory from the end of the previous trajectory to the new local target, 
-          // and use it as a warm start for the B-spline parameterization.
-          if (tail_dist > pp_.ctrl_pt_dist) 
+        double poly_time = (local_data_.position_traj_.evaluateDeBoorT(t) - local_target_pt).norm() / pp_.max_vel_ * 1.5;
+        cout << "Time to reach target from current position at max velocity: " << poly_time << "s\n";
+        if (poly_time > ts)
+        {
+          cout << "Generating initial polynomial trajectory from current traj with poly_time: " << poly_time << "s\n";
+          PolynomialTraj gl_traj = PolynomialTraj::one_segment_traj_gen(local_data_.position_traj_.evaluateDeBoorT(t),
+                                                                        local_data_.velocity_traj_.evaluateDeBoorT(t),
+                                                                        local_data_.acceleration_traj_.evaluateDeBoorT(t),
+                                                                        local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), poly_time);
+          for (t = ts; t < poly_time; t += ts)
           {
-            // compute the trail time based on the average of the end velocity of the previous traj and the local target velocity, 
-            // with a lower bound to ensure it's not 0 (protect against division by 0).
-            double const_vel = std::max(std::max(local_target_vel.norm(), old_end_vel.norm()), pp_.max_vel_ / 2.0);
-            tail_time = tail_dist / const_vel;
-
-            if (std::isfinite(tail_time) && tail_time > 1e-6)
+            if (!pseudo_arc_length.empty())
             {
-              // cout << "Local target velocity" << local_target_vel << endl;
-
-              tail_traj = PolynomialTraj::one_segment_traj_gen(old_end_pt,
-                                                               old_end_vel,
-                                                               old_end_acc,
-                                                               local_target_pt,
-                                                               local_target_vel,
-                                                               Eigen::Vector3d::Zero(),
-                                                               tail_time);
-              use_tail = true;
-              
-            }
-          }
-
-
-          const double total_warmstart_time = old_remain_time + tail_time;
-
-          if (!std::isfinite(total_warmstart_time) || total_warmstart_time < 1e-6)
-          {
-            point_set.clear();
-            point_set.push_back(local_target_pt);
-            break;
-          }
-
-          // Keep at least 6 intervals => at least 7 points when possible.
-          // On repeated attempts, increase interval count to get finer sampling.
-          int N = std::max(6, static_cast<int>(std::round(total_warmstart_time / ts_nominal)));
-          N = std::max(N, 6 * outer_iter);
-          // cout << "Warm-start sampling: total_warmstart_time=" << total_warmstart_time << ", N=" << N << ", ts=" << total_warmstart_time / N << endl;
-          ts = total_warmstart_time / static_cast<double>(N);
-
-          if (!std::isfinite(ts) || ts <= 1e-6)
-          {
-            std::cout << "Invalid ts in warm-start resampling.\n";
-            point_set.clear();
-            break;
-          }
-
-          point_set.reserve(N + 1);
-
-          for (int k = 0; k <= N; ++k)
-          {
-            double tau = std::min(k * ts, total_warmstart_time);
-            Eigen::Vector3d pt;
-
-            if (tau <= old_remain_time || !use_tail)
-            {
-              // Sample old trajectory
-              double t_sample = std::min(t_cur + tau, local_data_.duration_);
-              pt = local_data_.position_traj_.evaluateDeBoorT(t_sample);
+              segment_point.push_back(gl_traj.evaluate(t));
+              pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
             }
             else
             {
-              // Sample tail trajectory
-              double tail_tau = tau - old_remain_time;
-              tail_tau = std::min(tail_tau, tail_time);
-              pt = tail_traj.evaluate(tail_tau);
-            }
-
-            // Avoid duplicate consecutive points caused by phase boundary / clamping
-            if (point_set.empty() || (pt - point_set.back()).norm() > 1e-8)
-            {
-              point_set.push_back(pt);
+              RCLCPP_ERROR(rclcpp::get_logger("ego_planner"), "pseudo_arc_length is empty, return!");
+              continous_failures_count_++;
+              return false;
             }
           }
+        }
 
-          // Ensure exact target is included as final point
-          if (point_set.empty() || (point_set.back() - local_target_pt).norm() > 1e-4)
+        
+        double cps_dist = pp_.ctrl_pt_dist * 1.5; // cps_dist will be divided by 1.5 in the next
+        //ts *= 1.5;                                 // ts will be divided by 1.5 in the next
+        point_set.clear();
+        // cout << "Shrink ts once. Is now: " << ts << endl;
+        // cout << "cps_dist is now: " << cps_dist / 1.5 << endl;
+        // double velocity_here = cps_dist / 1.5 / ts ;
+        // cout << "VEL: " << velocity_here << endl; 
+        bool used_prev_traj = false;
+        if (pseudo_arc_length.size() >= 2)
+        {
+          double total_length = pseudo_arc_length.back();
+          if (std::isfinite(total_length) && total_length > 1e-3)
           {
-            point_set.push_back(local_target_pt);
+            double sample_length = 0.0;
+            size_t id = 0;
+            int outer_iter = 0;
+            do
+            {
+              if (++outer_iter > 30)
+              {
+                std::cout << "Sampling loop did not converge, break.\n";
+                point_set.clear();
+                break;
+              }
+              cps_dist /= 1.5;
+              if (cps_dist < pp_.ctrl_pt_dist-0.1)
+              {
+                ts /= 1.3;
+                // cout << "Shrink ts once. Is now: " << ts << endl;
+                // cout << "cps_dist is now: " << cps_dist << endl;
+                // double velocity_in_here = cps_dist / ts ;
+                // cout << "VEL: " << velocity_in_here << endl; 
+              } 
+              //ts = std::max(ts,1.0);
+              point_set.clear();
+              sample_length = 0;
+              id = 0;
+              while ((id <= pseudo_arc_length.size() - 2) &&
+                     sample_length <= pseudo_arc_length.back())
+              {
+                if (sample_length >= pseudo_arc_length[id] &&
+                    sample_length <  pseudo_arc_length[id + 1])
+                {
+                  point_set.push_back(
+                      (sample_length - pseudo_arc_length[id]) /
+                      (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id + 1] +
+                      (pseudo_arc_length[id + 1] - sample_length) /
+                      (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id]);
+                  sample_length += cps_dist;
+                }
+                else
+                {
+                  id++;
+                }
+              }
+              point_set.push_back(local_target_pt);
+            } while (point_set.size() < 7);
+
+            if (!point_set.empty())
+              used_prev_traj = true;
+
+            cout << "ts=" << ts << "  cps_dist=" << cps_dist << "\n";
           }
+        }
 
-          used_prev_traj = !point_set.empty();
-
-        } while (point_set.size() < 7); // ensure enough samples for parameterization
-
-        // Fallback: straight-line initial path if previous trajectory is unusable
         if (!used_prev_traj)
         {
           std::cout << "[B-spline init] using fallback straight-line path.\n";
-
           if (!tryStraightLinePlan(start_pt, start_vel, start_acc, local_target_pt, local_target_vel))
           {
             std::cout << "[B-spline init] fallback straight-line path blocked/infeasible.\n";
@@ -342,16 +362,13 @@ namespace ego_planner
           }
           else
           {
-            // If straight-line plan succeeded, the trajectory has already been updated and visualized in tryStraightLinePlan, return early.
             return true;
           }
         }
 
-        // Final safety check before parameterization
         if (point_set.size() < 4)
         {
-          std::cout << "[B-spline] point_set too small (" << point_set.size()
-                    << "), aborting.\n";
+          std::cout << "[B-spline] point_set too small (" << point_set.size() << "), aborting.\n";
           return false;
         }
 
@@ -360,7 +377,7 @@ namespace ego_planner
         start_end_derivatives.push_back(local_data_.acceleration_traj_.evaluateDeBoorT(t_cur));
         start_end_derivatives.push_back(Eigen::Vector3d::Zero());
 
-        if (point_set.size() > pp_.planning_horizen_ / pp_.ctrl_pt_dist * 3) // The initial path is unnormally too long!
+        if (point_set.size() > pp_.planning_horizen_ / pp_.ctrl_pt_dist * 3)
         {
           flag_force_polynomial = true;
           flag_regenerate = true;
@@ -374,7 +391,8 @@ namespace ego_planner
 
     vector<std::pair<int, int>> segments;
     segments = bspline_optimizer_->initControlPoints(ctrl_pts, true);
-    // Compute the time difference and update the time
+    publishCtrlPts(ctrl_pts, "pre_opt", 0);
+
     auto now = rclcpp::Clock().now();
     t_init = now - t_start;
     t_start = now;
@@ -386,30 +404,23 @@ namespace ego_planner
     if (pp_.use_distinctive_trajs)
     {
       std::vector<ControlPoints> trajs = bspline_optimizer_->distinctiveTrajs(segments);
-      cout << "\033[1;33m"
-           << "multi-trajs=" << trajs.size() << "\033[1;0m" << endl;
+      cout << "\033[1;33m" << "multi-trajs=" << trajs.size() << "\033[1;0m" << endl;
 
       double final_cost, min_cost = 999999.0;
       for (int i = trajs.size() - 1; i >= 0; i--)
       {
         if (bspline_optimizer_->BsplineOptimizeTrajRebound(ctrl_pts_temp, final_cost, trajs[i], ts))
         {
-
           cout << "traj " << trajs.size() - i << " success." << endl;
-
           flag_step_1_success = true;
           if (final_cost < min_cost)
           {
             min_cost = final_cost;
             ctrl_pts = ctrl_pts_temp;
           }
-
-          // visualization
           point_set.clear();
           for (int j = 0; j < ctrl_pts_temp.cols(); j++)
-          {
             point_set.push_back(ctrl_pts_temp.col(j));
-          }
           vis_trajs.push_back(point_set);
         }
         else
@@ -419,14 +430,12 @@ namespace ego_planner
       }
 
       t_opt = rclcpp::Clock().now() - t_start;
-
       visualization_->displayMultiInitPathList(vis_trajs, 0.2);
     }
     else
     {
       flag_step_1_success = bspline_optimizer_->BsplineOptimizeTrajRebound(ctrl_pts, ts);
       t_opt = rclcpp::Clock().now() - t_start;
-      // static int vis_id = 0;
       visualization_->displayInitPathList(point_set, 0.2, 0);
     }
 
@@ -442,18 +451,16 @@ namespace ego_planner
 
     UniformBspline pos = UniformBspline(ctrl_pts, 3, ts);
     pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
+    publishCtrlPts(ctrl_pts, "post_opt", 1000);
 
-    /*** STEP 3: REFINE(RE-ALLOCATE TIME) IF NECESSARY ***/
-    // Note: Only adjust time in single drone mode. But we still allow ego to adjust its time profile.
+    /*** STEP 3: REFINE (RE-ALLOCATE TIME) IF NECESSARY ***/
     if (pp_.drone_id <= 0)
     {
-
       double ratio;
       bool flag_step_2_success = true;
       if (!pos.checkFeasibility(ratio, false))
       {
         cout << "Need to reallocate time." << endl;
-
         Eigen::MatrixXd optimal_control_points;
         flag_step_2_success = refineTrajAlgo(pos, start_end_derivatives, ratio, ts, optimal_control_points);
         if (flag_step_2_success)
@@ -477,25 +484,54 @@ namespace ego_planner
       }
     }
 
-    // t_refine = ros::Time::now() - t_start;
     t_refine = rclcpp::Clock().now() - t_start;
-    
-    // save planned results
+
     updateTrajInfo(pos, node_->get_clock()->now());
 
     static double sum_time = 0;
     static int count_success = 0;
-
     sum_time += (t_init + t_opt + t_refine).seconds();
-
     count_success++;
-    
-    // cout << "total time:\033[42m" << (t_init + t_opt + t_refine).toSec() << "\033[0m,optimize:" << (t_init + t_opt).toSec() << ",refine:" << t_refine.toSec() << ",avg_time=" << sum_time / count_success << endl;
     cout << "total time:\033[42m" << (t_init + t_opt + t_refine).seconds() << "\033[0m,optimize:" << (t_init + t_opt).seconds() << ",refine:" << t_refine.seconds() << ",avg_time=" << sum_time / count_success << endl;
 
-    // success. YoY
     continous_failures_count_ = 0;
     return true;
+  }
+  void EGOPlannerManager::publishCtrlPts(const Eigen::MatrixXd& ctrl_pts, const std::string& ns, int id_offset)
+  {
+    visualization_msgs::msg::MarkerArray ma;
+    auto stamp = node_->get_clock()->now();
+
+    for (int i = 0; i < ctrl_pts.cols(); ++i)
+    {
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = "odom";
+      m.header.stamp    = stamp;
+      m.ns              = ns;
+      m.id              = id_offset + i;
+      m.type            = visualization_msgs::msg::Marker::SPHERE;
+      m.action          = visualization_msgs::msg::Marker::ADD;
+
+      m.pose.position.x = ctrl_pts(0, i);
+      m.pose.position.y = ctrl_pts(1, i);
+      m.pose.position.z = ctrl_pts(2, i);
+      m.pose.orientation.w = 1.0;
+
+      m.scale.x = m.scale.y = m.scale.z = 0.12;
+
+      // colour by namespace so pre/post-opt are visually distinct
+      if (ns == "pre_opt") {
+        m.color.r = 1.0f; m.color.g = 0.5f; m.color.b = 0.0f; // orange
+      } else {
+        m.color.r = 0.0f; m.color.g = 1.0f; m.color.b = 0.2f; // green
+      }
+      m.color.a = 0.9f;
+      m.lifetime = rclcpp::Duration(0, 500'000'000); // 0.5 s auto-expire
+
+      ma.markers.push_back(m);
+    }
+
+    ctrl_pts_pub_->publish(ma);
   }
 
   bool EGOPlannerManager::EmergencyStop(Eigen::Vector3d stop_pos)
@@ -643,10 +679,10 @@ namespace ego_planner
     {
       time(i) = (pos.col(i + 1) - pos.col(i)).norm() / (pp_.max_vel_);
     }
-    if (pt_num > 2){
-      time(0) *= 2.0;
-      time(time.rows() - 1) *= 2.0;
-    }
+    // if (pt_num > 2){
+    //   time(0) *= 2.0;
+    //   time(time.rows() - 1) *= 2.0;
+    // }
     }
     else{
 
@@ -764,7 +800,7 @@ namespace ego_planner
     // 2) create enough points on the line for Bspline parameterization
     const double dist = (target_pt - start_pt).norm();
     const int num_pts = std::max(7, int(std::ceil(dist / pp_.ctrl_pt_dist)) + 1);
-
+    cout << "NR of points " << num_pts << endl;
     std::vector<Eigen::Vector3d> point_set;
     point_set.reserve(num_pts);
     for (int i = 0; i < num_pts; ++i)
@@ -776,9 +812,14 @@ namespace ego_planner
     // 3) choose ts identical to existing EGO Planner heuristic
     double avg_ds = (target_pt - start_pt).norm() / std::max(1, num_pts - 1);
     double ts = avg_ds / std::max(1e-3, pp_.max_vel_);
+    // cout << "avg_ds" << avg_ds << endl;
+    // cout << "ts" << ts << endl;
+    // double avg_vel = avg_ds / ts;
+    // cout << "avg_vel" << avg_vel << endl;
+    
 
     // add safety margin (slower is safer)
-    ts *= 1.5; 
+    //ts *= 1.5; 
 
     // 4) derivatives
     std::vector<Eigen::Vector3d> start_end_derivatives;
@@ -791,6 +832,7 @@ namespace ego_planner
     // 5) parameterize to Bspline
     Eigen::MatrixXd ctrl_pts;
     UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
+    publishCtrlPts(ctrl_pts, "pre_opt", 0);
 
     UniformBspline pos(ctrl_pts, 3, ts);
     pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
@@ -799,10 +841,15 @@ namespace ego_planner
     double ratio = 1.0;
     if (!pos.checkFeasibility(ratio, false)) {
       // scale ts and re-parameterize
-      ts *= ratio;
+      // ts *= ratio;
+      // cout << "avg_ds" << avg_ds << endl;
+      // cout << "ts" << ts << endl;
+      // double avg_vel = avg_ds / ts;
+      // cout << "avg_vel" << avg_vel << endl;
       UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
       pos = UniformBspline(ctrl_pts, 3, ts);
       pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
+      publishCtrlPts(ctrl_pts, "post_opt", 1000);
 
       ratio = 1.0;
       if (!pos.checkFeasibility(ratio, false)) {

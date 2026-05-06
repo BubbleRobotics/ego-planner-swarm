@@ -86,7 +86,7 @@ def generate_launch_description():
             
             'camera_pose_topic': 'pcl_render_node/camera_pose',
             'depth_topic': 'pcl_render_node/depth',
-            'cloud_topic': '/stereo/point_cloud',#'camera_d455/depth/image_raw/points',
+            'cloud_topic': '/stereo/point_cloud_old',#'camera_d455/depth/image_raw/points',
             
             'cx': str(321.04638671875),
             'cy': str(243.44969177246094),

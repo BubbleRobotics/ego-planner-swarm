@@ -89,7 +89,10 @@ namespace ego_planner
   
     rclcpp::Subscription<traj_utils::msg::SnakeYaw>::SharedPtr snake_yaw_sub_;
     void snakeyawCallback(const traj_utils::msg::SnakeYaw::SharedPtr msg);
-
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr ctrl_pts_pub_;
+    void publishCtrlPts(const Eigen::MatrixXd& ctrl_pts,
+                    const std::string& ns,
+                    int id_offset = 0);
   public:
     typedef unique_ptr<EGOPlannerManager> Ptr;
 
